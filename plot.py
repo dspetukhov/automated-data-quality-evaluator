@@ -63,7 +63,7 @@ def make_charts(
     # Adjust figure parameters
     fig = adjust_figure(fig, n_cols, n_rows, config)
 
-    # Save figure as PNG file
+    # Save figure
     fig.write_image(
         file_path,
         format=config.get("format", "png"),
@@ -171,30 +171,31 @@ def adjust_figure(
         Figure: Adjusted Plotly figure.
     """
     layout = config.get("layout", {}).copy()
-    annotations = config.get("annotations", {})
-    template = layout.get("template", "plotly_white")
-    height = layout.get("height", 512)
-    width_scale_factor = layout.pop("width_scale_factor", 1)
-    height_scale_factor = layout.pop("height_scale_factor", 1)
+    grid_config = config.get("grid", {})
+    annotations_config = config.get("annotations", {})
 
-    # Scale figure size based on the number of rows and cols
+    # Adjust figure layout
     layout.update({
-        "template": template,
-        "width": height * n_cols * width_scale_factor,
-        "height": height * n_rows * height_scale_factor
-        if n_rows > 1 else height
+        "template": layout.get("template", "plotly_white"),
+        "width": layout.get("width", 700) * n_cols,
+        "height": layout.get("height", 240) * n_rows
     })
     fig.update_layout(layout)
 
     # Alter x-axis tick format, add grid
     fig.update_xaxes(
-        tickformat="%Y-%m-%d", **config.get("grid", {}))
-    fig.update_yaxes(**config.get("grid", {}))
+        tickformat=config.get("tickformat", "%Y-%m-%d"),
+        **grid_config
+    )
+    fig.update_yaxes(**grid_config)
 
-    # Align subplot titles to the left
+    # Adjust subplot titles
+    x_offset = annotations_config.pop("x_offset", 0)
+    y_offset = annotations_config.pop("y_offset", 0)
     for annotation in fig.layout.annotations:
         annotation.update(
-            x=annotation.x + (1 / n_cols) / 2.005,
-            y=annotation.y + 0.005,
-            xanchor="right", yanchor="bottom", **annotations)
+            x=annotation.x + (1 / n_cols) / (n_cols + x_offset),
+            y=annotation.y + y_offset,
+            **annotations_config
+        )
     return fig
