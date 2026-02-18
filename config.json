@@ -1,6 +1,6 @@
 {
     "source": {
-        "file_path": "../datasets/metaverse_transactions_dataset.csv"
+        "file_path": "/datasets/metaverse_transactions_dataset.csv"
     },
     "output": "metaverse-financial-transactions-dataset",
     "engine": "streaming",
