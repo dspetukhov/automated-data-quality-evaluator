@@ -1,4 +1,4 @@
-# examples/metaverse-financial-transactions-dataset | 2026-06-15 14:29
+# examples/metaverse-financial-transactions-dataset | 2026-06-15 20:24
 
 Data source: **/datasets/metaverse_transactions_dataset.csv**
 
@@ -20,7 +20,7 @@ Data source: **/datasets/metaverse_transactions_dataset.csv**
 - [`anomaly`](#anomaly)
 - [`target_column`](#target_column)
 
-<link rel='stylesheet' href='style.css'>
+<link rel='stylesheet' href='../../style.css'>
 
 ## Overview
 
