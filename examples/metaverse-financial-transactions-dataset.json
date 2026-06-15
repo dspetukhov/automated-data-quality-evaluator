@@ -5,7 +5,7 @@
             "timestamp": "Datetime"
         }
     },
-    "output": "metaverse-financial-transactions-dataset",
+    "output": "examples/metaverse-financial-transactions-dataset",
     "transformations": {
         "target_column": "(anomaly = 'high_risk')::int"
     },
@@ -24,7 +24,7 @@
         "plot": {
             "mode": "lines+markers",
             "line": {
-                "color": "dodgerblue",
+                "color": "silver",
                 "dash": "dash",
                 "width": 0.8
             },
@@ -33,7 +33,7 @@
                 "symbol": "circle",
                 "color": "white",
                 "line": {
-                    "color": "dodgerblue",
+                    "color": "black",
                     "width": 0.5
                 }
             }
@@ -53,6 +53,10 @@
             }
         },
         "layout": {
+            "font": {
+                "family": "Charter",
+                "size": 18
+            },
             "template": "plotly_white",
             "margin": { "l": 20, "r": 20, "t": 30, "b": 20 },
             "showlegend": false,
@@ -63,7 +67,11 @@
             "xanchor": "right",
             "yanchor": "bottom",
             "x_offset": 0.005,
-            "y_offset": 0.005
+            "y_offset": 0.005,
+            "font": {
+                "weight": "normal",
+                "size": 20
+            }
         },
         "grid": {
             "automargin": true,
