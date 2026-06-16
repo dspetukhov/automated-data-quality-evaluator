@@ -9,21 +9,18 @@ from utility import exception_handler, logging, read_source
 
 @exception_handler()
 def main(config_file_path: Path) -> None:
-    """
-    Main function to execute the data quality evaluation pipeline.
-    Requires correct configuration preset.
+    """Execute the data quality evaluation pipeline from a JSON config file.
 
-    This pipeline includes the following steps:
-      1. Checks if the configuration exists
-         and loads it as a configuration using json library.
-      2. Reads the data source as specified in the configuration.
-      3. Preprocess data: applies filters and transformations (optional),
-         aggregates data over dates.
-      4. Generates a report as a markdown file based on the preprocessed data.
+    Loads the configuration, reads the data source, preprocesses the data,
+    and generates a markdown report. Any exception raised by the pipeline
+    steps is caught by ``@exception_handler``, logged, and suppressed.
+
+    Args:
+        config_file_path: Path to the JSON configuration file.
 
     Raises:
-        SystemExit: If the configuration file wasn't found
-            or doesn't have 'source' section.
+        SystemExit: If ``config_file_path`` is not a file, or if the
+            configuration's ``source`` key is absent or null.
     """
     # Try to load the configuration file
     if config_file_path.is_file():
