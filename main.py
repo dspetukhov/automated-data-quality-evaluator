@@ -1,3 +1,5 @@
+"""Entry point for the automated data quality evaluation pipeline."""
+
 import json
 import sys
 from pathlib import Path
