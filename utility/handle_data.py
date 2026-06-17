@@ -1,3 +1,5 @@
+"""Data source reading utilities for the automated data quality evaluator."""
+
 import os
 
 import polars as pl
@@ -8,30 +10,28 @@ from .setup_logging import logging
 
 @exception_handler(exit_on_error=True)
 def read_source(source: dict[str, str]) -> pl.LazyFrame:
-    """Read specified source of data as Polars LazyFrame.
+    """Read a data source into a Polars LazyFrame.
 
-    Supports CSV, Parquet, Iceberg, XLSX, and database URIs.
-    Returns LazyFrame for preprocessing. If loading fails,
-    it terminates the main program.
-    In case of reading from cloud providers `storage_options` definition
-    is expected, otherwise Polars will try to infer credentials implicitly
-    from environment variables, e.g. AWS_REGION in case of S3.
-    `uri` and `storage_options` values can be read from environment variables
-    if they are specified with a $ sign at the beginning.
+    Supports CSV, Parquet, Iceberg, XLSX (file-based), and PostgreSQL
+    (URI-based). Cloud-storage credentials in ``storage_options`` and ``uri``
+    are resolved from environment variables when prefixed with ``$``.
 
     Args:
-        source (dict[str, str]): Data source specification.
-            Can be a dictionary with `query` and `uri` keys
-            to read from a PostgreSQL database,
-            or a dictionary with `file_path` key
-            to read from file, Google Drive, S3
-            (`storage_options` and `file_format` are optional).
+        source: Data source specification dict. Accepted shapes:
+
+            - File-based: must contain ``"file_path"`` (str). Optional keys:
+              ``"file_format"`` (str), ``"storage_options"`` (dict),
+              ``"schema_overrides"`` (dict[str, str]).
+            - Database: must contain both ``"query"`` (str) and ``"uri"``
+              (str, PostgreSQL connection URI).
 
     Returns:
-        pl.LazyFrame: Polars lazy data frame.
+        pl.LazyFrame containing the loaded data, ready for processing.
 
     Raises:
-        SystemExit: If data cannot be loaded or source specification is invalid.
+        SystemExit: If ``source`` is not a dict, if neither ``"file_path"``
+            nor the ``"query"``/``"uri"`` pair is present, or if the
+            underlying read operation raises an exception.
     """
     if not isinstance(source, dict):
         raise SystemExit(
@@ -79,25 +79,31 @@ def _read_source(
     storage_options: dict[str, str] | None,
     schema_overrides: dict[str, str] | None,
 ) -> pl.LazyFrame:
-    """Read source based on file format specified or based on source name ending.
+    """Select and call the appropriate Polars reader for a file source.
 
-    This function selects suitable read function
-    based on file format specified. If it wasn't specified,
-    it selects read function by matching source name ending
-    with supported file formats. If read function is found,
-    it reads source as Lazy data frame, otherwise SystemExit raised.
+    When ``file_format`` is provided it is normalised to lowercase and
+    looked up directly. When ``None``, the file extension of ``source``
+    is matched case-insensitively against the supported formats.
 
     Args:
-        source (str): Path to the file to read.
-        file_format (str | None): File format to read.
-        storage_options (dict[str, str] | None): Credentials to read from cloud providers.
-        schema_overrides (dict[str, str] | None): Mapping to change types of certain columns.
+        source: Path or URL to the file.
+        file_format: Explicit format override (``"csv"``, ``"xlsx"``,
+            ``"parquet"``, or ``"iceberg"``; case-insensitive). Pass
+            ``None`` to auto-detect from the file extension.
+        storage_options: Credentials or reader options forwarded to the
+            underlying Polars reader for cloud-storage sources. Ignored
+            for XLSX.
+        schema_overrides: Column-name-to-Polars-type mapping forwarded to
+            the reader. Applied to CSV and XLSX only.
 
     Returns:
-        pl.LazyFrame: Polars lazy data frame.
+        pl.LazyFrame containing the data read from ``source``.
 
     Raises:
-        SystemExit: If there is no read function for the file format provided.
+        SystemExit: If ``file_format`` is a string not in the supported
+            set, or if ``file_format`` is ``None`` and the extension of
+            ``source`` does not match a supported format (csv, xlsx,
+            parquet, iceberg).
     """
     # {file format: read function} mapping
     read_source_func = {
@@ -144,15 +150,22 @@ def _read_source(
 
 
 def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
-    """Replace string data type representation into Polars data type.
+    """Map string type names to Polars DataType instances.
+
+    Unknown type strings are skipped with a warning. Non-dict, non-``None``
+    input logs a warning and returns ``None``.
+
+    Supported type names: ``"String"``, ``"Date"``, ``"Datetime"``,
+    ``"Categorical"``.
 
     Args:
-        data (dict[str, str]): Dict of types representation
-            to be mapped with Polars data types.
+        data: Mapping of column name to type-name string, or ``None`` to
+            opt out of schema overrides. Any other non-dict type is treated
+            the same as ``None``.
 
     Returns:
-        dict[str, pl.DataType]: Mapping of string data type representation
-            to Polars data type.
+        A ``dict[str, pl.DataType]`` mapping column names to Polars types,
+        or ``None`` if ``data`` is ``None`` or not a ``dict``.
     """
     dtypes = {
         "String": pl.String,
@@ -177,19 +190,26 @@ def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
 
 
 def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str, str]:
-    """Replace environment variable placeholders with actual values.
+    """Resolve ``$VAR`` placeholders in a string or dict of strings.
 
-    Any value in `params` starting with "$" sign is considered as
-    environment variable placeholders that will be replaced with
-    the environment variable value.
+    Each string value starting with ``$`` has the leading ``$`` stripped and
+    the remainder looked up in ``os.environ``. If the variable is set the
+    value is replaced; if not, ``None`` is returned for that placeholder and
+    a warning is logged. Strings not starting with ``$`` are returned
+    unchanged. For unsupported input types the original value is returned
+    as-is with a warning.
 
     Args:
-        params (str | dict[str, str]): Input parameters potentially
-            containing environment variable placeholders.
+        params: A ``str``, a ``dict[str, Any]``, or any other type.
+            Dict values that are not strings are passed through unchanged.
 
     Returns:
-        str | dict[str, str]: Updated parameters
-            with environment variable placeholders replaced by their actual values.
+        For ``str`` input: the resolved ``str``, or ``None`` if the
+        referenced environment variable is absent.
+        For ``dict`` input: a new ``dict`` with the same keys and each
+        string value resolved (``str | None``); non-string values are
+        unchanged.
+        For any other type: the original value unchanged.
     """
 
     def get_environment_variable(value: str) -> str | None:
