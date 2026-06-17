@@ -1,13 +1,14 @@
 import os
+
 import polars as pl
+
 from .handle_exceptions import exception_handler
 from .setup_logging import logging
 
 
 @exception_handler(exit_on_error=True)
 def read_source(source: dict[str, str]) -> pl.LazyFrame:
-    """
-    Read specified source of data as Polars LazyFrame.
+    """Read specified source of data as Polars LazyFrame.
 
     Supports CSV, Parquet, Iceberg, XLSX, and database URIs.
     Returns LazyFrame for preprocessing. If loading fails,
@@ -34,7 +35,8 @@ def read_source(source: dict[str, str]) -> pl.LazyFrame:
     """
     if not isinstance(source, dict):
         raise SystemExit(
-            f"Source specification must be a dictionary, got: {type(source).__name__}")
+            f"Source specification must be a dictionary, got: {type(source).__name__}"
+        )
 
     lf = None
 
@@ -42,8 +44,7 @@ def read_source(source: dict[str, str]) -> pl.LazyFrame:
     if source.get("query") and source.get("uri"):
         logging.info(f"Data to read: {source['query']}")
         lf = pl.read_database_uri(
-            query=source["query"],
-            uri=handle_environment_variables(source["uri"])
+            query=source["query"], uri=handle_environment_variables(source["uri"])
         ).lazy()
 
     elif source.get("file_path"):
@@ -54,15 +55,13 @@ def read_source(source: dict[str, str]) -> pl.LazyFrame:
             source.get("storage_options", {})
         )
         # Get schema_overrides to alter schema dtypes for csv / xlsx
-        schema_overrides = handle_schema_overrides(
-            source.get("schema_overrides")
-        )
+        schema_overrides = handle_schema_overrides(source.get("schema_overrides"))
 
         lf = _read_source(
             source["file_path"],
             source.get("file_format"),
             storage_options,
-            schema_overrides
+            schema_overrides,
         )
 
     if lf is None:
@@ -75,13 +74,12 @@ def read_source(source: dict[str, str]) -> pl.LazyFrame:
 
 
 def _read_source(
-        source: str,
-        file_format: str | None,
-        storage_options: dict[str, str] | None,
-        schema_overrides: dict[str, str] | None
+    source: str,
+    file_format: str | None,
+    storage_options: dict[str, str] | None,
+    schema_overrides: dict[str, str] | None,
 ) -> pl.LazyFrame:
-    """
-    Read source based on file format specified or based on source name ending.
+    """Read source based on file format specified or based on source name ending.
 
     This function selects suitable read function
     based on file format specified. If it wasn't specified,
@@ -111,8 +109,15 @@ def _read_source(
     lf, read_func = None, None
 
     if isinstance(file_format, str):
-        if file_format.lower() in read_source_func:
-            read_func = read_source_func[file_format]
+        file_format_lower = file_format.lower()
+        if file_format_lower in read_source_func:
+            read_func = read_source_func[file_format_lower]
+            file_format = file_format_lower
+        else:
+            raise SystemExit(
+                f"Unsupported file format '{file_format}', "
+                f"supported formats: csv, xlsx, parquet, iceberg"
+            )
     else:
         # Try to match source ending with supported file formats
         for ff, rf in read_source_func.items():
@@ -130,9 +135,8 @@ def _read_source(
         lf = read_func(source, schema_overrides=schema_overrides).lazy()
     elif file_format == "csv":
         lf = read_func(
-            source,
-            schema_overrides=schema_overrides,
-            storage_options=storage_options)
+            source, schema_overrides=schema_overrides, storage_options=storage_options
+        )
     else:
         lf = read_func(source, storage_options=storage_options)
 
@@ -140,8 +144,7 @@ def _read_source(
 
 
 def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
-    """
-    Replace string data type representation into Polars data type.
+    """Replace string data type representation into Polars data type.
 
     Args:
         data (dict[str, str]): Dict of types representation
@@ -155,7 +158,7 @@ def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
         "String": pl.String,
         "Date": pl.Date,
         "Datetime": pl.Datetime,
-        "Categorical": pl.Categorical
+        "Categorical": pl.Categorical,
     }
 
     if isinstance(data, dict):
@@ -164,21 +167,17 @@ def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
             if value in dtypes:
                 output[key] = dtypes[value]
             else:
-                logging.warning(
-                    f"Unsupported data type '{value}' for column '{key}'")
+                logging.warning(f"Unsupported data type '{value}' for column '{key}'")
         return output
     elif data is None:
         return None
     else:
-        logging.warning(
-            f"'schema_overrides' expected dict, got {type(data).__name__}")
+        logging.warning(f"'schema_overrides' expected dict, got {type(data).__name__}")
+        return None
 
 
-def handle_environment_variables(
-    params: str | dict[str, str]
-) -> str | dict[str, str]:
-    """
-    Replace environment variable placeholders with actual values.
+def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str, str]:
+    """Replace environment variable placeholders with actual values.
 
     Any value in `params` starting with "$" sign is considered as
     environment variable placeholders that will be replaced with
@@ -192,7 +191,8 @@ def handle_environment_variables(
         str | dict[str, str]: Updated parameters
             with environment variable placeholders replaced by their actual values.
     """
-    def get_environment_variable(value: str) -> str:
+
+    def get_environment_variable(value: str) -> str | None:
         if value.startswith("$"):
             value = value[1:]
             if value in os.environ:
@@ -200,7 +200,7 @@ def handle_environment_variables(
                 return os.getenv(value)
             else:
                 logging.warning(f"Environment variable for '{value}' not found")
-                return value
+                return None
         else:
             return value
 

@@ -27,20 +27,23 @@ class TestHandleEnvironmentVariables:
         monkeypatch.setenv("MY_VAR", "secret")
         assert handle_environment_variables("$MY_VAR") == "secret"
 
-    def test_str_with_dollar_env_missing_returns_name_without_dollar(self, monkeypatch):
+    def test_str_with_dollar_env_missing_returns_none(self, monkeypatch):
+        # BEHAVIOR CHANGED (bug fix #4): was returning the bare name "MISSING_VAR";
+        # now returns None so callers can detect the substitution failed.
         monkeypatch.delenv("MISSING_VAR", raising=False)
-        # Current behavior: strips "$" and returns the bare name
-        assert handle_environment_variables("$MISSING_VAR") == "MISSING_VAR"
+        assert handle_environment_variables("$MISSING_VAR") is None
 
     def test_dict_resolves_dollar_values(self, monkeypatch):
         monkeypatch.setenv("KEY1", "val1")
         result = handle_environment_variables({"a": "$KEY1", "b": "literal"})
         assert result == {"a": "val1", "b": "literal"}
 
-    def test_dict_missing_env_returns_name_without_dollar(self, monkeypatch):
+    def test_dict_missing_env_returns_none_for_value(self, monkeypatch):
+        # BEHAVIOR CHANGED (bug fix #4): was {"x": "ABSENT"}; now {"x": None}
+        # so callers can detect the substitution failed rather than using the var name as a value.
         monkeypatch.delenv("ABSENT", raising=False)
         result = handle_environment_variables({"x": "$ABSENT"})
-        assert result == {"x": "ABSENT"}
+        assert result == {"x": None}
 
     def test_dict_non_string_value_passes_through(self):
         result = handle_environment_variables({"n": 42, "flag": True})
@@ -158,11 +161,14 @@ class TestReadSourceInternal:
         )
         assert result is mock_lf
 
-    def test_explicit_file_format_uppercase_causes_key_error(self):
-        # .lower() is used for the membership check but the ORIGINAL key is used for lookup
-        # → "CSV".lower() == "csv" passes the check, but read_source_func["CSV"] raises KeyError
-        with pytest.raises(KeyError):
-            _read_source("data.txt", "CSV", {}, None)
+    def test_explicit_file_format_uppercase_normalised(self):
+        # BEHAVIOR CHANGED (bug fix #1): was raising KeyError because the original-case
+        # string was used as the dict key; now normalised to lowercase before lookup.
+        mock_lf = self._mock_lazy()
+        with patch("polars.scan_csv", return_value=mock_lf) as mock_scan:
+            result = _read_source("data.txt", "CSV", {}, None)
+        mock_scan.assert_called_once_with("data.txt", schema_overrides=None, storage_options={})
+        assert result is mock_lf
 
     def test_unknown_extension_raises_system_exit(self):
         with pytest.raises(SystemExit) as exc:
@@ -170,11 +176,13 @@ class TestReadSourceInternal:
         assert "Unable to determine file format" in str(exc.value)
         assert "data.json" in str(exc.value)
 
-    def test_unknown_explicit_format_falls_to_else_and_raises_type_error(self):
-        # file_format is a known string branch path but not in read_source_func
-        # → read_func stays None → None(...) in else branch → TypeError
-        with pytest.raises(TypeError):
+    def test_unknown_explicit_format_raises_system_exit(self):
+        # BEHAVIOR CHANGED (bug fix #2): was raising TypeError (None called as a function);
+        # now raises SystemExit with a clear message listing supported formats.
+        with pytest.raises(SystemExit) as exc:
             _read_source("data.txt", "jsonl", {}, None)
+        assert "Unsupported file format" in str(exc.value)
+        assert "jsonl" in str(exc.value)
 
     def test_csv_schema_overrides_none_passed_through(self):
         mock_lf = self._mock_lazy()
