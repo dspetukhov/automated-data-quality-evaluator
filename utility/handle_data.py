@@ -7,6 +7,16 @@ import polars as pl
 from .handle_exceptions import exception_handler
 from .setup_logging import logging
 
+# Supported file formats and their corresponding Polars reader functions.
+_READERS = {
+    "xlsx": pl.read_excel,
+    "csv": pl.scan_csv,
+    "parquet": pl.scan_parquet,
+    "iceberg": pl.scan_iceberg,
+}
+
+_SUPPORTED_FORMATS = ", ".join(_READERS)
+
 
 @exception_handler(exit_on_error=True)
 def read_source(source: dict[str, str]) -> pl.LazyFrame:
@@ -47,22 +57,28 @@ def read_source(source: dict[str, str]) -> pl.LazyFrame:
             query=source["query"], uri=handle_environment_variables(source["uri"])
         ).lazy()
 
+    # Read from file/directory
     elif source.get("file_path"):
         logging.info(f"Data to read: {source['file_path']}")
 
-        # Get storage_options to read from cloud providers
         storage_options = handle_environment_variables(
             source.get("storage_options", {})
         )
-        # Get schema_overrides to alter schema dtypes for csv / xlsx
         schema_overrides = handle_schema_overrides(source.get("schema_overrides"))
+        file_path = source["file_path"]
+        file_format = _resolve_file_format(file_path, source.get("file_format"))
+        read_func = _READERS[file_format]
 
-        lf = _read_source(
-            source["file_path"],
-            source.get("file_format"),
-            storage_options,
-            schema_overrides,
-        )
+        if file_format == "xlsx":
+            lf = read_func(file_path, schema_overrides=schema_overrides).lazy()
+        elif file_format == "csv":
+            lf = read_func(
+                file_path,
+                schema_overrides=schema_overrides,
+                storage_options=storage_options,
+            )
+        else:
+            lf = read_func(file_path, storage_options=storage_options)
 
     if lf is None:
         raise SystemExit(
@@ -73,80 +89,44 @@ def read_source(source: dict[str, str]) -> pl.LazyFrame:
     return lf
 
 
-def _read_source(
-    source: str,
-    file_format: str | None,
-    storage_options: dict[str, str] | None,
-    schema_overrides: dict[str, str] | None,
-) -> pl.LazyFrame:
-    """Select and call the appropriate Polars reader for a file source.
+def _resolve_file_format(source: str, file_format: str | None) -> str:
+    """Resolve and validate the file format for a given source.
 
-    When ``file_format`` is provided it is normalised to lowercase and
-    looked up directly. When ``None``, the file extension of ``source``
-    is matched case-insensitively against the supported formats.
+    When ``file_format`` is a string it is normalised to lowercase and
+    validated against the supported set. When ``None``, the format is
+    inferred from the file extension of ``source`` (case-insensitive).
 
     Args:
-        source: Path or URL to the file.
-        file_format: Explicit format override (``"csv"``, ``"xlsx"``,
-            ``"parquet"``, or ``"iceberg"``; case-insensitive). Pass
-            ``None`` to auto-detect from the file extension.
-        storage_options: Credentials or reader options forwarded to the
-            underlying Polars reader for cloud-storage sources. Ignored
-            for XLSX.
-        schema_overrides: Column-name-to-Polars-type mapping forwarded to
-            the reader. Applied to CSV and XLSX only.
+        source: Path or URL to the file; used for extension-based detection
+            when ``file_format`` is ``None``.
+        file_format: Explicit format string or ``None`` for auto-detection.
 
     Returns:
-        pl.LazyFrame containing the data read from ``source``.
+        Lowercase format string, guaranteed to be a key in ``_READERS``.
 
     Raises:
-        SystemExit: If ``file_format`` is a string not in the supported
-            set, or if ``file_format`` is ``None`` and the extension of
-            ``source`` does not match a supported format (csv, xlsx,
-            parquet, iceberg).
+        SystemExit: If ``file_format`` is an unrecognised string, or if
+            ``file_format`` is ``None`` and the extension of ``source``
+            does not match any supported format.
     """
-    # {file format: read function} mapping
-    read_source_func = {
-        "xlsx": pl.read_excel,
-        "csv": pl.scan_csv,
-        "parquet": pl.scan_parquet,
-        "iceberg": pl.scan_iceberg,
-    }
-    lf, read_func = None, None
-
     if isinstance(file_format, str):
-        file_format_lower = file_format.lower()
-        if file_format_lower in read_source_func:
-            read_func = read_source_func[file_format_lower]
-            file_format = file_format_lower
-        else:
+        ff_lower = file_format.lower()
+        if ff_lower not in _READERS:
             raise SystemExit(
                 f"Unsupported file format '{file_format}', "
-                f"supported formats: csv, xlsx, parquet, iceberg"
+                f"supported formats: {_SUPPORTED_FORMATS}"
             )
-    else:
-        # Try to match source ending with supported file formats
-        for ff, rf in read_source_func.items():
-            if source.lower().endswith(f".{ff}"):
-                logging.info(f"Identified file format: {ff}")
-                file_format, read_func = ff, rf
+        return ff_lower
 
-        if read_func is None:
-            raise SystemExit(
-                f"Unable to determine file format for: {source}, "
-                f"supported formats: csv, xlsx, parquet, iceberg"
-            )
+    for ff_lower in _READERS:
+        if source.lower().endswith(f".{ff_lower}"):
+            logging.info(f"Identified file format: {ff_lower}")
+            return ff_lower
 
-    if file_format == "xlsx":
-        lf = read_func(source, schema_overrides=schema_overrides).lazy()
-    elif file_format == "csv":
-        lf = read_func(
-            source, schema_overrides=schema_overrides, storage_options=storage_options
-        )
-    else:
-        lf = read_func(source, storage_options=storage_options)
-
-    return lf
+    raise SystemExit(
+        f"Unable to determine file format for: {source}, "
+        f"supported formats: {_SUPPORTED_FORMATS}"
+    )
 
 
 def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
@@ -212,28 +192,26 @@ def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str
         For any other type: the original value unchanged.
     """
 
-    def get_environment_variable(value: str) -> str | None:
-        if value.startswith("$"):
-            value = value[1:]
-            if value in os.environ:
-                logging.info(f"Environment variable for '{value}' found")
-                return os.getenv(value)
-            else:
-                logging.warning(f"Environment variable for '{value}' not found")
-                return None
-        else:
+    def _resolve_environment_variable(value: str) -> str | None:
+        """Resolve a ``$VAR`` placeholder to its environment variable value, or return ``value`` unchanged."""
+        if not value.startswith("$"):
             return value
+        name = value[1:]
+        if name in os.environ:
+            logging.info(f"Environment variable for '{name}' found")
+            return os.getenv(name)
+        logging.warning(f"Environment variable for '{name}' not found")
+        return None
 
     if isinstance(params, str):
-        return get_environment_variable(params)
+        return _resolve_environment_variable(params)
     elif isinstance(params, dict):
-        output = {}
-        for key, value in params.items():
-            if isinstance(value, str):
-                output[key] = get_environment_variable(value)
-            else:
-                output[key] = value
-        return output
+        return {
+            key: _resolve_environment_variable(value)
+            if isinstance(value, str)
+            else value
+            for key, value in params.items()
+        }
     else:
         logging.warning(
             "Unsupported input type for 'storage_options' or 'uri': "

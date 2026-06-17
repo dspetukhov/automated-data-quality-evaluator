@@ -7,7 +7,6 @@ import polars as pl
 import pytest
 
 from utility.handle_data import (
-    _read_source,
     handle_environment_variables,
     handle_schema_overrides,
     read_source,
@@ -107,19 +106,19 @@ class TestHandleSchemaOverrides:
 
 
 # ---------------------------------------------------------------------------
-# _read_source (private — tested directly for full branch coverage)
+# file-path branch of read_source — format detection and reader dispatch
 # ---------------------------------------------------------------------------
 
 
-class TestReadSourceInternal:
+class TestReadSourceFileBranch:
     def _mock_lazy(self):
-        lf = MagicMock(spec=pl.LazyFrame)
-        return lf
+        return MagicMock(spec=pl.LazyFrame)
 
     def test_csv_by_extension_calls_scan_csv(self):
         mock_lf = self._mock_lazy()
-        with patch("polars.scan_csv", return_value=mock_lf) as mock_scan:
-            result = _read_source("data.csv", None, {"opt": "val"}, {"col": pl.String})
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
+            result = read_source({"file_path": "data.csv", "storage_options": {"opt": "val"}, "schema_overrides": {"col": "String"}})
         mock_scan.assert_called_once_with(
             "data.csv",
             schema_overrides={"col": pl.String},
@@ -129,15 +128,17 @@ class TestReadSourceInternal:
 
     def test_parquet_by_extension_calls_scan_parquet(self):
         mock_lf = self._mock_lazy()
-        with patch("polars.scan_parquet", return_value=mock_lf) as mock_scan:
-            result = _read_source("data.parquet", None, {}, None)
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"parquet": mock_scan}):
+            result = read_source({"file_path": "data.parquet"})
         mock_scan.assert_called_once_with("data.parquet", storage_options={})
         assert result is mock_lf
 
     def test_iceberg_by_extension_calls_scan_iceberg(self):
         mock_lf = self._mock_lazy()
-        with patch("polars.scan_iceberg", return_value=mock_lf) as mock_scan:
-            result = _read_source("table.iceberg", None, {}, None)
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"iceberg": mock_scan}):
+            result = read_source({"file_path": "table.iceberg"})
         mock_scan.assert_called_once_with("table.iceberg", storage_options={})
         assert result is mock_lf
 
@@ -145,58 +146,61 @@ class TestReadSourceInternal:
         mock_df = MagicMock()
         mock_lf = self._mock_lazy()
         mock_df.lazy.return_value = mock_lf
-        with patch("polars.read_excel", return_value=mock_df) as mock_read:
-            result = _read_source("data.xlsx", None, {}, {"col": pl.Date})
+        mock_read = MagicMock(return_value=mock_df)
+        with patch.dict("utility.handle_data._READERS", {"xlsx": mock_read}):
+            result = read_source({"file_path": "data.xlsx", "schema_overrides": {"col": "Date"}})
         mock_read.assert_called_once_with("data.xlsx", schema_overrides={"col": pl.Date})
         mock_df.lazy.assert_called_once()
         assert result is mock_lf
 
     def test_explicit_file_format_overrides_extension(self):
         mock_lf = self._mock_lazy()
-        with patch("polars.scan_csv", return_value=mock_lf) as mock_scan:
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
             # Source ends in .parquet but format is forced to csv
-            result = _read_source("data.parquet", "csv", {}, None)
+            result = read_source({"file_path": "data.parquet", "file_format": "csv"})
         mock_scan.assert_called_once_with(
             "data.parquet", schema_overrides=None, storage_options={}
         )
         assert result is mock_lf
 
     def test_explicit_file_format_uppercase_normalised(self):
-        # BEHAVIOR CHANGED (bug fix #1): was raising KeyError because the original-case
-        # string was used as the dict key; now normalised to lowercase before lookup.
+        # BEHAVIOR CHANGED (bug fix #1): uppercase file_format is normalised to lowercase.
         mock_lf = self._mock_lazy()
-        with patch("polars.scan_csv", return_value=mock_lf) as mock_scan:
-            result = _read_source("data.txt", "CSV", {}, None)
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
+            result = read_source({"file_path": "data.txt", "file_format": "CSV"})
         mock_scan.assert_called_once_with("data.txt", schema_overrides=None, storage_options={})
         assert result is mock_lf
 
     def test_unknown_extension_raises_system_exit(self):
         with pytest.raises(SystemExit) as exc:
-            _read_source("data.json", None, {}, None)
+            read_source({"file_path": "data.json"})
         assert "Unable to determine file format" in str(exc.value)
         assert "data.json" in str(exc.value)
 
     def test_unknown_explicit_format_raises_system_exit(self):
-        # BEHAVIOR CHANGED (bug fix #2): was raising TypeError (None called as a function);
-        # now raises SystemExit with a clear message listing supported formats.
+        # BEHAVIOR CHANGED (bug fix #2): raises SystemExit with clear message.
         with pytest.raises(SystemExit) as exc:
-            _read_source("data.txt", "jsonl", {}, None)
+            read_source({"file_path": "data.txt", "file_format": "jsonl"})
         assert "Unsupported file format" in str(exc.value)
         assert "jsonl" in str(exc.value)
 
-    def test_csv_schema_overrides_none_passed_through(self):
+    def test_csv_no_schema_overrides_passed_as_none(self):
         mock_lf = self._mock_lazy()
-        with patch("polars.scan_csv", return_value=mock_lf) as mock_scan:
-            _read_source("data.csv", None, None, None)
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
+            read_source({"file_path": "data.csv"})
         mock_scan.assert_called_once_with(
-            "data.csv", schema_overrides=None, storage_options=None
+            "data.csv", schema_overrides=None, storage_options={}
         )
 
     def test_source_uppercase_extension_is_matched(self):
         # source.lower() is used in the comparison so ".CSV" DOES match ".csv"
         mock_lf = self._mock_lazy()
-        with patch("polars.scan_csv", return_value=mock_lf) as mock_scan:
-            result = _read_source("data.CSV", None, {}, None)
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
+            result = read_source({"file_path": "data.CSV"})
         mock_scan.assert_called_once_with(
             "data.CSV", schema_overrides=None, storage_options={}
         )
@@ -235,39 +239,45 @@ class TestReadSource:
             read_source({"uri": "postgresql://localhost/db"})
         assert "cannot be read" in str(exc.value)
 
-    def test_file_path_calls_read_source_internal(self):
+    def test_file_path_dispatches_to_csv_reader(self):
         mock_lf = MagicMock(spec=pl.LazyFrame)
-        with patch("utility.handle_data._read_source", return_value=mock_lf) as mock_rs:
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
             result = read_source({"file_path": "data.csv"})
-        mock_rs.assert_called_once_with("data.csv", None, {}, None)
+        mock_scan.assert_called_once_with("data.csv", schema_overrides=None, storage_options={})
         assert result is mock_lf
 
     def test_file_path_with_file_format_passed_through(self):
         mock_lf = MagicMock(spec=pl.LazyFrame)
-        with patch("utility.handle_data._read_source", return_value=mock_lf) as mock_rs:
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
             read_source({"file_path": "data.txt", "file_format": "csv"})
-        mock_rs.assert_called_once_with("data.txt", "csv", {}, None)
+        mock_scan.assert_called_once_with("data.txt", schema_overrides=None, storage_options={})
 
     def test_file_path_with_storage_options_resolved(self, monkeypatch):
         monkeypatch.setenv("MY_KEY", "resolved_key")
         mock_lf = MagicMock(spec=pl.LazyFrame)
-        with patch("utility.handle_data._read_source", return_value=mock_lf) as mock_rs:
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"parquet": mock_scan}):
             read_source({
                 "file_path": "s3://bucket/data.parquet",
                 "storage_options": {"key": "$MY_KEY"},
             })
-        mock_rs.assert_called_once_with(
-            "s3://bucket/data.parquet", None, {"key": "resolved_key"}, None
+        mock_scan.assert_called_once_with(
+            "s3://bucket/data.parquet", storage_options={"key": "resolved_key"}
         )
 
     def test_file_path_with_schema_overrides_resolved(self):
         mock_lf = MagicMock(spec=pl.LazyFrame)
-        with patch("utility.handle_data._read_source", return_value=mock_lf) as mock_rs:
+        mock_scan = MagicMock(return_value=mock_lf)
+        with patch.dict("utility.handle_data._READERS", {"csv": mock_scan}):
             read_source({
                 "file_path": "data.csv",
                 "schema_overrides": {"col": "Date"},
             })
-        mock_rs.assert_called_once_with("data.csv", None, {}, {"col": pl.Date})
+        mock_scan.assert_called_once_with(
+            "data.csv", schema_overrides={"col": pl.Date}, storage_options={}
+        )
 
     def test_db_path_calls_read_database_uri(self):
         mock_df = pl.DataFrame({"a": [1, 2]})
