@@ -6,7 +6,7 @@ from tabulate import tabulate
 from evaluate import evaluate_data
 from plot import make_charts
 from utility import exception_handler
-from utility import TIME_INTERVAL_COL, OVERVIEW_COL, PREFIX_COL, PREFIX_NUM_COL
+from utility import TIME_INTERVAL_COL, OVERVIEW_COL, PREFIX_COL, PREFIX_COL_E
 
 
 @exception_handler()
@@ -82,7 +82,7 @@ def make_report(
             data = df.select(
                 [TIME_INTERVAL_COL] + [
                     item for item in df.columns
-                    if item.startswith(f"{PREFIX_NUM_COL} {col} __")]
+                    if item.startswith(f"{PREFIX_COL_E} {col} __")]
             )
             evals, bounds = evaluate_data(data, outliers)
             data_evals[col].update(
@@ -91,7 +91,7 @@ def make_report(
                 data,
                 bounds=bounds,
                 config=plotly,
-                file_path=Path(output, f"{col_}__numeric"))
+                file_path=Path(output, f"{col_}__extra"))
 
     # Collect markdown content
     content = collect_md_content(
@@ -152,10 +152,11 @@ def get_report_variables(
     # CSS style for markdown tables
     css_style = config.get("markdown", {}).get("css_style")
     if css_style:
-        css_style = Path(css_style)
-        if css_style.exists() and css_style.is_file():
+        css_style_file_path = Path(css_style)
+        if css_style_file_path.exists() and css_style_file_path.is_file():
+            file_path = css_style_file_path.relative_to(Path(output_dir), walk_up=True)
             md_content = [
-                f"<link rel='stylesheet' href='{css_style.resolve()}'>\n"
+                f"<link rel='stylesheet' href='{file_path}'>\n"
             ]
 
     # Number of decimal places to format numbers in markdown tables
@@ -182,7 +183,7 @@ def collect_md_content(
     content: list[str],
     output: str,
     source: str,
-    precision: int = 4
+    precision: int | None = 4
 ) -> list[str]:
     """
     Process data to create markdown content
@@ -226,7 +227,7 @@ def collect_md_content(
         if data[col].get("dtype"):
             content.append((
                 "### `{alias}`\n\n"
-                "![{col}]({col}__numeric)\n\n"
+                "![{col}]({col}__extra)\n\n"
                 "{table}"
             ).format(
                 col=col_, alias=data[col]["dtype"],

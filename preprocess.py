@@ -2,7 +2,7 @@ import polars as pl
 import polars.selectors as cs
 from typing import Any
 from utility import logging, exception_handler
-from utility import TIME_INTERVAL_COL, PREFIX_COL, PREFIX_NUM_COL
+from utility import TIME_INTERVAL_COL, PREFIX_COL, PREFIX_COL_E
 
 
 @exception_handler(exit_on_error=True)
@@ -59,7 +59,9 @@ def make_preprocessing(
     aggs, metadata = collect_aggregations(
         schema,
         target_column,
-        config.get("columns_to_exclude", []))
+        config.get("columns_to_exclude", []),
+        config.get("columns_to_exclude_extra_statistics", [])
+    )
 
     # Set chunk size used in streaming engine
     if isinstance(config.get("streaming_chunk_size"), int):
@@ -175,7 +177,8 @@ def process_date_column(
 def collect_aggregations(
     schema: pl.Schema,
     target_column: str | None,
-    columns_to_exclude: list[str]
+    columns_to_exclude: list[str],
+    columns_to_exclude_extra_statistics: list[str]
 ) -> tuple[list[pl.Expr], dict[str, str | None]]:
     """
     Collect aggregation expressions.
@@ -219,17 +222,20 @@ def collect_aggregations(
                 f"{PREFIX_COL} {col} __Proportion of missing values"),
         ])
 
-        # Add extra statistics if column is of numeric data type
-        if col in cs.expand_selector(schema, cs.numeric()):
+        if col in columns_to_exclude_extra_statistics:
+            metadata[col] = None
+        else:
+            col_expr = pl.col(col)
+            # Add extra statistics
+            if col not in cs.expand_selector(schema, cs.numeric()):
+                col_expr = col_expr.cast(pl.String).str.len_chars().alias(col)
             aggs.extend([
-                pl.col(col).min().alias(f"{PREFIX_NUM_COL} {col} __Min"),
-                pl.col(col).max().alias(f"{PREFIX_NUM_COL} {col} __Max"),
-                pl.col(col).mean().alias(f"{PREFIX_NUM_COL} {col} __Mean"),
-                pl.col(col).median().alias(f"{PREFIX_NUM_COL} {col} __Median"),
-                pl.col(col).std().alias(f"{PREFIX_NUM_COL} {col} __Standard deviation"),
+                col_expr.min().alias(f"{PREFIX_COL_E} {col} __Min"),
+                col_expr.max().alias(f"{PREFIX_COL_E} {col} __Max"),
+                col_expr.mean().alias(f"{PREFIX_COL_E} {col} __Mean"),
+                col_expr.median().alias(f"{PREFIX_COL_E} {col} __Median"),
+                col_expr.std().alias(f"{PREFIX_COL_E} {col} __Standard deviation"),
             ])
             metadata[col] = str(schema[col])
-        else:
-            metadata[col] = None
 
     return aggs, metadata
