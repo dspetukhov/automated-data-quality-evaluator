@@ -48,8 +48,8 @@ def make_charts(
         # Add data series as a trace to the subplot
         fig.add_trace(
             Scatter(
-                x=data[TIME_INTERVAL_COL],
-                y=data[col],
+                x=data[TIME_INTERVAL_COL].to_list(),
+                y=data[col].to_list(),
                 **config.get("plot", {})
             ),
             row=(i // n_cols) + 1, col=(i % n_cols) + 1
