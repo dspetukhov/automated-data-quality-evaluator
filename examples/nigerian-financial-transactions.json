@@ -1,0 +1,96 @@
+{
+    "source": {
+        "file_path": "hf://datasets/electricsheepafrica/Nigerian-Financial-Transactions-and-Fraud-Detection-Dataset/V2-nigerian-financial-transactions-and-fraud-detection-dataset-for-model-training.csv",
+        "schema_overrides": {
+            "timestamp": "Datetime",
+            "sender_account": "Categorical",
+            "receiver_account": "Categorical",
+            "transaction_type": "Categorical",
+            "merchant_category": "Categorical",
+            "location": "Categorical",
+            "device_used": "Categorical",
+            "fraud_type": "Categorical",
+            "payment_channel": "Categorical",
+            "ip_address": "Categorical",
+            "device_hash": "Categorical",
+            "sender_persona": "Categorical",
+            "user_top_category": "Categorical",
+            "ip_geo_region": "Categorical"
+        }
+    },
+    "output": "nigerian-financial-transactions",
+    "engine": "streaming",
+    "filter": "select * from self where timestamp < '2024-01-01'",
+    "date_column": "timestamp",
+    "target_column": "is_fraud",
+    "columns_to_exclude": ["transaction_id"],
+    "outliers": {
+        "criterion": "IQR",
+        "multiplier_iqr": 1.5,
+        "threshold_z_score": 3.0
+    },
+    "markdown": {
+        "name": "README.md",
+        "css_style": "style.css",
+        "float_precision": 4
+    },
+    "plotly": {
+        "plot": {
+            "mode": "lines+markers",
+            "line": {
+                "color": "dodgerblue",
+                "dash": "dash",
+                "width": 0.8
+            },
+            "marker": {
+                "size": 6,
+                "symbol": "circle",
+                "color": "white",
+                "line": {
+                    "color": "dodgerblue",
+                    "width": 0.5
+                }
+            }
+        },
+        "outliers": {
+            "style": {
+                "type": "rect",
+                "xref": "x",
+                "yref": "y",
+                "fillcolor": "grey",
+                "opacity": 0.05,
+                "line": {
+                    "width": 1.0,
+                    "dash": "dot",
+                    "color": "black"
+                }
+            }
+        },
+        "layout": {
+            "template": "plotly_white",
+            "margin": { "l": 20, "r": 20, "t": 30, "b": 20 },
+            "showlegend": false,
+            "height": 480,
+            "width": 700
+        },
+        "annotations": {
+            "xanchor": "right",
+            "yanchor": "bottom",
+            "x_offset": 0.005,
+            "y_offset": 0.005
+        },
+        "grid": {
+            "automargin": true,
+            "gridcolor": "rgba(128,128,128,0.3)",
+            "griddash": "dot",
+            "gridwidth": 0.5
+        },
+        "subplots": {
+            "horizontal_spacing": 0.05,
+            "vertical_spacing": 0.065
+        },
+        "scale_factor": 3,
+        "format": "PNG",
+        "tickformat": "%Y-%m-%d"
+    }
+}

@@ -31,12 +31,12 @@ Powered by [Polars](https://docs.pola.rs/) and [Plotly](https://docs.plotly.com/
 ## Requirements
 
 ```txt
-# Python 3.10 or higher
+# Python 3.12+
 
-polars>=1.37.0
-plotly==6.3.0
+polars>=1.41.2
+plotly==6.8.0
 kaleido==0.2.1
-tabulate==0.9.0
+tabulate==0.10.0
 ```
 
 ## Quick start
@@ -509,5 +509,35 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
 ```
 
 **Note:** Downloaded by `ds = load_dataset("Nooha/cc_fraud_detection_dataset")`, then saved `ds["train"].to_parquet("cc_fraud_detection_dataset.parquet")`.
+
+- [electricsheepafrica/Nigerian-Financial-Transactions-and-Fraud-Detection-Dataset](https://huggingface.co/datasets/electricsheepafrica/Nigerian-Financial-Transactions-and-Fraud-Detection-Dataset)
+
+```json
+    "source": {
+        "file_path": "hf://datasets/electricsheepafrica/Nigerian-Financial-Transactions-and-Fraud-Detection-Dataset/V2-nigerian-financial-transactions-and-fraud-detection-dataset-for-model-training.csv",
+        "schema_overrides": {
+            "timestamp": "Datetime",
+            "sender_account": "Categorical",
+            "receiver_account": "Categorical",
+            "transaction_type": "Categorical",
+            "merchant_category": "Categorical",
+            "location": "Categorical",
+            "device_used": "Categorical",
+            "fraud_type": "Categorical",
+            "payment_channel": "Categorical",
+            "ip_address": "Categorical",
+            "device_hash": "Categorical",
+            "sender_persona": "Categorical",
+            "user_top_category": "Categorical",
+            "ip_geo_region": "Categorical"
+        }
+    },
+    "output": "nigerian-financial-transactions",
+    "engine": "streaming",
+    "filter": "select * from self where timestamp < '2024-01-01'",
+    "date_column": "timestamp",
+    "target_column": "is_fraud",
+    "columns_to_exclude": ["transaction_id"],
+```
 
 [Back to table of contents](#table-of-contents)
