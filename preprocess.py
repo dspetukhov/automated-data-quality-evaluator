@@ -1,17 +1,22 @@
+from typing import Any
+
 import polars as pl
 import polars.selectors as cs
-from typing import Any
-from utility import logging, exception_handler
-from utility import TIME_INTERVAL_COL, PREFIX_COL, PREFIX_COL_E
+
+from utility import (
+    PREFIX_COL,
+    PREFIX_COL_E,
+    TIME_INTERVAL_COL,
+    exception_handler,
+    logging,
+)
 
 
 @exception_handler(exit_on_error=True)
 def make_preprocessing(
-        lf: pl.LazyFrame,
-        config: dict[str, Any]
+    lf: pl.LazyFrame, config: dict[str, Any]
 ) -> tuple[pl.DataFrame, dict[str, str]]:
-    """
-    Preprocess data for evaluation through aggregation by dates.
+    """Preprocess data for evaluation through aggregation by dates.
 
     This function processes input data frame by applying filter
     and transformations as specified by SQL expressions in the configuration.
@@ -36,15 +41,13 @@ def make_preprocessing(
 
     # Get and print LazyFrame schema
     schema = lf.collect_schema()
-    schema_str = "\n".join(
-        f"{col}: {dtype}" for col, dtype in schema.items())
+    schema_str = "\n".join(f"{col}: {dtype}" for col, dtype in schema.items())
     logging.info(f"Data schema:\n{schema_str}")
 
     # Prepare date_column for data aggregation
     date_column = config.get("date_column", "date_column")
     lf, schema = process_date_column(
-        lf, schema,
-        date_column, config.get("time_interval", "1d")
+        lf, schema, date_column, config.get("time_interval", "1d")
     )
 
     # Get target_column
@@ -60,7 +63,7 @@ def make_preprocessing(
         schema,
         target_column,
         config.get("columns_to_exclude", []),
-        config.get("columns_to_exclude_extra_statistics", [])
+        config.get("columns_to_exclude_extra_statistics", []),
     )
 
     # Set chunk size used in streaming engine
@@ -74,11 +77,8 @@ def make_preprocessing(
     return lf_agg, metadata
 
 
-def apply_filter(
-        lf: pl.LazyFrame, filter_str: str | None
-) -> pl.LazyFrame:
-    """
-    Apply filter to Polars LazyFrame.
+def apply_filter(lf: pl.LazyFrame, filter_str: str | None) -> pl.LazyFrame:
+    """Apply filter to Polars LazyFrame.
 
     This function applies SQL expression to make a slice of data
     as specified in the configuration.
@@ -97,10 +97,9 @@ def apply_filter(
 
 
 def apply_transformations(
-        lf: pl.LazyFrame, transformations: dict[str, str] | None
+    lf: pl.LazyFrame, transformations: dict[str, str] | None
 ) -> pl.LazyFrame:
-    """
-    Apply transformations to Polars LazyFrame.
+    """Apply transformations to Polars LazyFrame.
 
     This function applies transformations to alter LazyFrame columns
     as specified by SQL in the configuration.
@@ -127,13 +126,9 @@ def apply_transformations(
 
 
 def process_date_column(
-    lf: pl.LazyFrame,
-    schema: pl.Schema,
-    date_column: str,
-    time_interval: str
+    lf: pl.LazyFrame, schema: pl.Schema, date_column: str, time_interval: str
 ) -> tuple[pl.LazyFrame, pl.Schema]:
-    """
-    Check date_column presence in schema and validate its type.
+    """Check date_column presence in schema and validate its type.
 
     This function checks date_column type in schema, makes conversion
     to datetime type if necessary, and renames it to TIME_INTERVAL_COL
@@ -156,11 +151,13 @@ def process_date_column(
     Raises:
         SystemExit: If no date column in data.
     """
-    if schema.get(date_column):
-        # Check date_column type and convert it to Polars date type
+    if not schema.get(date_column):
+        raise SystemExit(f"Exit: no column '{date_column}' in data for preprocessing")
+
+    if schema.get(date_column) in (pl.String, pl.Datetime, pl.Date):
         if schema.get(date_column) == pl.String:
-            lf = lf.with_columns(
-                pl.col(date_column).str.to_date(strict=True))
+            # Convert date_column of string type into Polars date type
+            lf = lf.with_columns(pl.col(date_column).str.to_date(strict=True))
 
         # Divide date or datetime range into time intervals / buckets
         lf = lf.with_columns(pl.col(date_column).dt.truncate(time_interval))
@@ -171,17 +168,18 @@ def process_date_column(
 
         return lf, lf.collect_schema()
     else:
-        raise SystemExit("Exit: no 'date_column' for data preprocessing")
+        raise SystemExit(
+            f"Exit: 'date_column' type '{schema.get(date_column)}' is not supported"
+        )
 
 
 def collect_aggregations(
     schema: pl.Schema,
     target_column: str | None,
     columns_to_exclude: list[str],
-    columns_to_exclude_extra_statistics: list[str]
+    columns_to_exclude_extra_statistics: list[str],
 ) -> tuple[list[pl.Expr], dict[str, str | None]]:
-    """
-    Collect aggregation expressions.
+    """Collect aggregation expressions.
 
     This function collects expressions to perform data aggregation by dates.
     The first expression calculates the number of values per date,
@@ -201,13 +199,12 @@ def collect_aggregations(
                 indicating types for numeric columns.
     """
     # Start with common aggregation expression for the number of values
-    aggs = [pl.count().alias(" __Number of values")]
+    aggs = [pl.len().alias(" __Number of values")]
 
     # If target column is found in schema,
     # calculate its mean (i.e. class balance in binary classification problems)
     if target_column:
-        aggs.append(
-            pl.col(target_column).mean().alias(" __Target average"))
+        aggs.append(pl.col(target_column).mean().alias(" __Target average"))
 
     metadata = {}
 
@@ -215,12 +212,18 @@ def collect_aggregations(
         if col == TIME_INTERVAL_COL or col in columns_to_exclude:
             continue
         # Add common statistics for the column
-        aggs.extend([
-            pl.col(col).n_unique().alias(
-                f"{PREFIX_COL} {col} __Number of unique values"),
-            pl.col(col).is_null().mean().alias(
-                f"{PREFIX_COL} {col} __Proportion of missing values"),
-        ])
+        aggs.extend(
+            [
+                pl.col(col)
+                .drop_nulls()
+                .n_unique()
+                .alias(f"{PREFIX_COL} {col} __Number of unique values"),
+                pl.col(col)
+                .is_null()
+                .mean()
+                .alias(f"{PREFIX_COL} {col} __Proportion of missing values"),
+            ]
+        )
 
         if col in columns_to_exclude_extra_statistics:
             metadata[col] = None
@@ -229,13 +232,15 @@ def collect_aggregations(
             # Add extra statistics
             if col not in cs.expand_selector(schema, cs.numeric()):
                 col_expr = col_expr.cast(pl.String).str.len_chars().alias(col)
-            aggs.extend([
-                col_expr.min().alias(f"{PREFIX_COL_E} {col} __Min"),
-                col_expr.max().alias(f"{PREFIX_COL_E} {col} __Max"),
-                col_expr.mean().alias(f"{PREFIX_COL_E} {col} __Mean"),
-                col_expr.median().alias(f"{PREFIX_COL_E} {col} __Median"),
-                col_expr.std().alias(f"{PREFIX_COL_E} {col} __Standard deviation"),
-            ])
+            aggs.extend(
+                [
+                    col_expr.min().alias(f"{PREFIX_COL_E} {col} __Min"),
+                    col_expr.max().alias(f"{PREFIX_COL_E} {col} __Max"),
+                    col_expr.mean().alias(f"{PREFIX_COL_E} {col} __Mean"),
+                    col_expr.median().alias(f"{PREFIX_COL_E} {col} __Median"),
+                    col_expr.std().alias(f"{PREFIX_COL_E} {col} __Standard deviation"),
+                ]
+            )
             metadata[col] = str(schema[col])
 
     return aggs, metadata
