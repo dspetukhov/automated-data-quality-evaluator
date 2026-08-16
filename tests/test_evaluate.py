@@ -75,16 +75,13 @@ class TestEvaluateDataOutliers:
         assert outliers_iqr == 0
         assert outliers_zscore == 0
 
-    def test_none_std_falls_through_to_zscore_branch(self):
-        # NOTE (fragile-by-accident, not a crash): with a single non-null
-        # value, Polars std() returns None. `std == 0` is False for None
-        # (None != 0), so the code does NOT take the short-circuit branch and
-        # instead evaluates `(data - mean) / std` with std=None. Polars
-        # broadcasts the None as a null, producing a null Series; the
-        # subsequent `> threshold` comparison and `.sum()` silently treat
-        # that null as "not counted," landing on outliers_zscore == 0 anyway
-        # -- but only because of null-propagation semantics, not because the
-        # std==0 guard caught this degenerate single-value case.
+    def test_none_std_treated_as_zero(self):
+        # FIXED: with a single non-null value, Polars std() returns None.
+        # evaluate_data_outliers now normalizes None -> 0 up front, so this
+        # is handled the same intentional way as an explicit zero std,
+        # rather than relying on Polars null-propagation to accidentally
+        # land on 0 (see test_none_std_with_zscore_criterion_no_longer_crashes
+        # for the case this used to crash on).
         data, mean, std, q1, q3 = self._stats([5])
         assert std is None
         outliers_iqr, outliers_zscore, bounds = evaluate_data_outliers(
@@ -92,6 +89,35 @@ class TestEvaluateDataOutliers:
         )
         assert outliers_zscore == 0
         assert outliers_iqr == 0
+        assert bounds == (None, None)
+
+    def test_none_std_with_zscore_criterion_no_longer_crashes(self):
+        # FIXED: previously `mean - threshold * std` with std=None raised
+        # TypeError here, which (when called from evaluate_data) was
+        # silently swallowed by @exception_handler(), returning the raw
+        # input DataFrame instead of the documented tuple. Now std=None is
+        # normalized to 0 before bounds are computed, collapsing to a
+        # single point (mean, mean) -- consistent with the explicit
+        # std == 0 case in test_zero_std_short_circuits_zscore_to_zero.
+        data, mean, std, q1, q3 = self._stats([5])
+        assert std is None
+        outliers_iqr, outliers_zscore, bounds = evaluate_data_outliers(
+            data, mean, std, q1, q3, {"criterion": "Z-score", "threshold_z_score": 3.0}
+        )
+        assert outliers_zscore == 0
+        assert outliers_iqr == 0
+        assert bounds == (mean, mean)
+
+    def test_all_null_quartiles_return_none_bounds_without_crashing(self):
+        # FIXED: an all-null column yields q1 = q3 = None. Previously
+        # `q1 - multiplier * (q3 - q1)` raised TypeError; now this is
+        # guarded and short-circuits to (0, 0, (None, None)).
+        data = pl.Series([None, None, None], dtype=pl.Int64)
+        outliers_iqr, outliers_zscore, bounds = evaluate_data_outliers(
+            data, None, None, None, None, {"criterion": "IQR"}
+        )
+        assert outliers_iqr == 0
+        assert outliers_zscore == 0
         assert bounds == (None, None)
 
 
@@ -151,6 +177,21 @@ class TestEvaluateData:
         assert entry["Outliers [IQR]"] == pytest.approx(100 * 1 / 6)
         assert len(outliers_bounds) == 1
 
+    def test_outliers_percentage_uses_non_null_count_not_total_rows(self):
+        # FIXED: percentages used to divide by data.shape[0] (total rows),
+        # silently diluting the outlier percentage whenever the column had
+        # nulls -- nulls were excluded from the outlier count (numerator)
+        # but still counted in the denominator. Now the denominator is the
+        # column's own non-null count.
+        df = pl.DataFrame({
+            "__time_interval": [1, 2, 3, 4, 5, 6, 7, 8],
+            "col": [1, 2, 3, 4, 5, None, None, 100],
+        })
+        data_evals, _ = evaluate_data(df, {"multiplier_iqr": 1.5})
+        entry = data_evals[0]
+        # 1 outlier (100) out of 6 non-null values, not 8 total rows
+        assert entry["Outliers [IQR]"] == pytest.approx(100 * 1 / 6)
+
     def test_multiple_columns_each_produce_one_eval_and_bound(self):
         df = pl.DataFrame({
             "__time_interval": [1, 2, 3],
@@ -162,32 +203,59 @@ class TestEvaluateData:
         assert len(outliers_bounds) == 2
         assert [e["title"] for e in data_evals] == ["a", "b"]
 
-    def test_empty_dataframe_zero_rows_returns_original_data_due_to_exception_handler(self):
-        # BUG: with 0 rows, `100 * outliers / data.shape[0]` divides by zero,
-        # raising ZeroDivisionError inside the @exception_handler()-wrapped
-        # evaluate_data. The decorator swallows the exception, logs it, and
-        # (since exit_on_error defaults to False) returns `args[0]` — i.e. the
-        # original input DataFrame — instead of the documented
-        # tuple[list, list] return type. Callers relying on the documented
-        # signature would break downstream.
+    def test_empty_dataframe_zero_rows_returns_none_stats_without_crashing(self):
+        # FIXED: with 0 rows, mean/std/q1/q3/min/max are all None (same
+        # degenerate case as an all-null column). This used to raise
+        # ZeroDivisionError (percentage calc) or TypeError (Range/IQR
+        # arithmetic on None), silently swallowed by @exception_handler(),
+        # returning the raw input DataFrame instead of the documented
+        # tuple[list, list]. Now it returns a proper eval entry with None
+        # stats and 0% outliers instead of crashing.
         df = pl.DataFrame({
             "__time_interval": pl.Series([], dtype=pl.Int64),
             "a": pl.Series([], dtype=pl.Int64),
         })
-        result = evaluate_data(df, {})
-        assert isinstance(result, pl.DataFrame)
-        assert result is df
+        data_evals, outliers_bounds = evaluate_data(df, {})
+        assert data_evals == [
+            {
+                "title": "a",
+                "μ±σ": (None, None),
+                "Range [Min]": None,
+                "Range [Max]": None,
+                "Range": None,
+                "IQR [Q1]": None,
+                "IQR [Q3]": None,
+                "IQR": None,
+                "Outliers [IQR]": 0.0,
+                "Outliers [Z-score]": 0.0,
+            }
+        ]
+        assert outliers_bounds == [(None, None)]
 
-    def test_all_null_column_returns_original_data_due_to_exception_handler(self):
-        # BUG: an all-null column yields mean/std/q1/q3 = None. The IQR bound
-        # computation `q1 - multiplier * (q3 - q1)` then does arithmetic on
-        # None, raising TypeError, which is swallowed by @exception_handler()
-        # the same way as above -> the raw input DataFrame is returned instead
-        # of the documented (list, list) tuple.
+    def test_all_null_column_returns_none_stats_without_crashing(self):
+        # FIXED: an all-null column yields mean/std/q1/q3/min/max = None.
+        # The IQR bound computation `q1 - multiplier * (q3 - q1)` used to
+        # raise TypeError on None arithmetic, silently swallowed by
+        # @exception_handler(), returning the raw input DataFrame instead
+        # of the documented (list, list) tuple. Now it returns a proper
+        # eval entry with None stats and 0% outliers instead of crashing.
         df = pl.DataFrame({
             "__time_interval": [1, 2, 3],
             "a": pl.Series([None, None, None], dtype=pl.Int64),
         })
-        result = evaluate_data(df, {})
-        assert isinstance(result, pl.DataFrame)
-        assert result is df
+        data_evals, outliers_bounds = evaluate_data(df, {})
+        assert data_evals == [
+            {
+                "title": "a",
+                "μ±σ": (None, None),
+                "Range [Min]": None,
+                "Range [Max]": None,
+                "Range": None,
+                "IQR [Q1]": None,
+                "IQR [Q3]": None,
+                "IQR": None,
+                "Outliers [IQR]": 0.0,
+                "Outliers [Z-score]": 0.0,
+            }
+        ]
+        assert outliers_bounds == [(None, None)]
