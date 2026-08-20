@@ -88,8 +88,8 @@ def evaluate_data(
 
 def evaluate_data_outliers(
     data: Series,
-    mean: float,
-    std: float,
+    mean: float | None,
+    std: float | None,
     q1: float | None,
     q3: float | None,
     config: dict[str, str | float],
@@ -103,7 +103,7 @@ def evaluate_data_outliers(
 
     Args:
         data (Series): polars.Series of numeric values.
-        mean (float): Mean of data to count Z-score outliers and boundaries.
+        mean (float | None): Mean of data to count Z-score outliers and boundaries.
         std (float | None): Standard deviation of data.
         q1 (float | None): First quartile (0.25) of data.
         q3 (float | None): Third quartile (0.75) of data.
