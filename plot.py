@@ -141,7 +141,7 @@ def highlight_outliers(
         )
         for i in range(len(shape)):
             fig.add_shape(
-                x0=min(x), x1=max(x), y0=shape[i][0], y1=shape[i][1],
+                x0=x.min(), x1=x.max(), y0=shape[i][0], y1=shape[i][1],
                 **config,
                 row=(s // n_cols) + 1, col=(s % n_cols) + 1)
     return fig
