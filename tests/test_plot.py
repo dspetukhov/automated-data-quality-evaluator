@@ -7,27 +7,27 @@ import pytest
 from plotly.graph_objs._figure import Figure
 from plotly.subplots import make_subplots
 
-from plot import adjust_figure, create_figure, highlight_outliers, make_charts
+from plot import adjust_chart, create_chart, highlight_outliers, make_charts
 from utility import TIME_INTERVAL_COL
 
 # ---------------------------------------------------------------------------
-# create_figure
+# create_chart
 # ---------------------------------------------------------------------------
 
 
-class TestCreateFigure:
+class TestCreateChart:
     def test_n_cols_always_two(self):
-        fig, n_cols, n_rows = create_figure(4, {}, titles=["a", "b", "c", "d"])
+        fig, n_cols, n_rows = create_chart(4, {}, titles=["a", "b", "c", "d"])
         assert n_cols == 2
         assert n_rows == 2
 
     def test_odd_subplot_count_rounds_rows_up(self):
-        _, n_cols, n_rows = create_figure(3, {}, titles=["a", "b", "c"])
+        _, n_cols, n_rows = create_chart(3, {}, titles=["a", "b", "c"])
         assert n_cols == 2
         assert n_rows == 2
 
     def test_single_subplot_still_gets_one_row(self):
-        _, n_cols, n_rows = create_figure(1, {}, titles=["a"])
+        _, n_cols, n_rows = create_chart(1, {}, titles=["a"])
         assert n_cols == 2
         assert n_rows == 1
 
@@ -36,7 +36,7 @@ class TestCreateFigure:
             " __ col_a __Number of unique values",
             " __ col_b __Proportion of missing values",
         ]
-        fig, _, _ = create_figure(2, {}, titles=titles)
+        fig, _, _ = create_chart(2, {}, titles=titles)
         annotation_texts = [a.text for a in fig.layout.annotations]
         assert annotation_texts == [
             "Number of unique values",
@@ -44,12 +44,12 @@ class TestCreateFigure:
         ]
 
     def test_title_without_delimiter_is_kept_as_is(self):
-        fig, _, _ = create_figure(2, {}, titles=["plain title", "other"])
+        fig, _, _ = create_chart(2, {}, titles=["plain title", "other"])
         annotation_texts = [a.text for a in fig.layout.annotations]
         assert annotation_texts == ["plain title", "other"]
 
     def test_custom_spacing_config_is_applied(self):
-        fig, _, _ = create_figure(
+        fig, _, _ = create_chart(
             2, {"horizontal_spacing": 0.3, "vertical_spacing": 0.4}, titles=["a", "b"]
         )
         # make_subplots does not expose spacing directly on the figure, so we
@@ -58,7 +58,7 @@ class TestCreateFigure:
 
     def test_default_spacing_used_when_missing(self):
         # Should not raise even though config is empty.
-        fig, _, _ = create_figure(2, {}, titles=["a", "b"])
+        fig, _, _ = create_chart(2, {}, titles=["a", "b"])
         assert isinstance(fig, Figure)
 
 
@@ -151,29 +151,29 @@ class TestHighlightOutliers:
 
 
 # ---------------------------------------------------------------------------
-# adjust_figure
+# adjust_chart
 # ---------------------------------------------------------------------------
 
 
-class TestAdjustFigure:
+class TestAdjustChart:
     def _fig(self, titles=("A", "B")):
         return make_subplots(rows=1, cols=2, subplot_titles=list(titles))
 
     def test_default_layout_dimensions(self):
         fig = self._fig()
-        result = adjust_figure(fig, n_cols=2, n_rows=1, config={})
+        result = adjust_chart(fig, n_cols=2, n_rows=1, config={})
         assert result.layout.width == 1400  # 700 * 2
         assert result.layout.height == 240  # 240 * 1
 
     def test_default_layout_scales_with_grid_size(self):
         fig = make_subplots(rows=2, cols=2)
-        result = adjust_figure(fig, n_cols=2, n_rows=2, config={})
+        result = adjust_chart(fig, n_cols=2, n_rows=2, config={})
         assert result.layout.width == 1400
         assert result.layout.height == 480
 
     def test_custom_layout_overrides_defaults(self):
         fig = self._fig()
-        result = adjust_figure(
+        result = adjust_chart(
             fig,
             2,
             1,
@@ -185,18 +185,18 @@ class TestAdjustFigure:
 
     def test_default_tickformat_applied_to_xaxes(self):
         fig = self._fig()
-        result = adjust_figure(fig, 2, 1, {})
+        result = adjust_chart(fig, 2, 1, {})
         assert result.layout.xaxis.tickformat == "%Y-%m-%d"
         assert result.layout.xaxis2.tickformat == "%Y-%m-%d"
 
     def test_custom_tickformat_applied(self):
         fig = self._fig()
-        result = adjust_figure(fig, 2, 1, {"tickformat": "%b %Y"})
+        result = adjust_chart(fig, 2, 1, {"tickformat": "%b %Y"})
         assert result.layout.xaxis.tickformat == "%b %Y"
 
     def test_grid_config_applied_to_both_axes(self):
         fig = self._fig()
-        result = adjust_figure(
+        result = adjust_chart(
             fig, 2, 1, {"grid": {"gridcolor": "lightgrey", "showgrid": True}}
         )
         assert result.layout.xaxis.gridcolor == "lightgrey"
@@ -205,7 +205,7 @@ class TestAdjustFigure:
     def test_annotation_offset_default_shifts_x_only(self):
         fig = self._fig()
         original_x = [a.x for a in fig.layout.annotations]
-        result = adjust_figure(fig, 2, 1, {})
+        result = adjust_chart(fig, 2, 1, {})
         for orig_x, annotation in zip(original_x, result.layout.annotations):
             assert annotation.x == pytest.approx(orig_x + (1 / 2) / (2 + 0))
 
@@ -213,7 +213,7 @@ class TestAdjustFigure:
         fig = self._fig()
         original_x = [a.x for a in fig.layout.annotations]
         original_y = [a.y for a in fig.layout.annotations]
-        result = adjust_figure(
+        result = adjust_chart(
             fig, 2, 1, {"annotations": {"x_offset": 1, "y_offset": 0.1}}
         )
         for ox, oy, annotation in zip(
@@ -224,7 +224,7 @@ class TestAdjustFigure:
 
     def test_extra_annotation_config_forwarded(self):
         fig = self._fig()
-        result = adjust_figure(
+        result = adjust_chart(
             fig, 2, 1, {"annotations": {"font": {"size": 20}}}
         )
         for annotation in result.layout.annotations:
@@ -237,13 +237,13 @@ class TestAdjustFigure:
         # dict silently loses the offsets it previously had.
         annotations_cfg = {"x_offset": 1, "y_offset": 0.5}
         config = {"annotations": annotations_cfg}
-        adjust_figure(self._fig(), 2, 1, config)
+        adjust_chart(self._fig(), 2, 1, config)
         assert "x_offset" not in annotations_cfg
         assert "y_offset" not in annotations_cfg
 
     def test_returns_same_figure_instance(self):
         fig = self._fig()
-        result = adjust_figure(fig, 2, 1, {})
+        result = adjust_chart(fig, 2, 1, {})
         assert result is fig
 
 
