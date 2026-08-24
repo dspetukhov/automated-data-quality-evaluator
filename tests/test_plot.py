@@ -230,16 +230,14 @@ class TestAdjustChart:
         for annotation in result.layout.annotations:
             assert annotation.font.size == 20
 
-    def test_annotations_config_dict_is_mutated_in_place(self):
-        # BUG-ish: `annotations_config = config.get("annotations", {})` is not
-        # copied, so `.pop("x_offset")`/`.pop("y_offset")` mutate the caller's
-        # config dict as a side effect. A second call reusing the same config
-        # dict silently loses the offsets it previously had.
+    def test_annotations_config_dict_is_not_mutated(self):
+        # `annotations_config = config.get("annotations", {}).copy()` copies
+        # before popping "x_offset"/"y_offset", so the caller's config dict
+        # is left intact and can be reused across calls.
         annotations_cfg = {"x_offset": 1, "y_offset": 0.5}
         config = {"annotations": annotations_cfg}
         adjust_chart(self._fig(), 2, 1, config)
-        assert "x_offset" not in annotations_cfg
-        assert "y_offset" not in annotations_cfg
+        assert annotations_cfg == {"x_offset": 1, "y_offset": 0.5}
 
     def test_returns_same_figure_instance(self):
         fig = self._fig()

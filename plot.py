@@ -191,7 +191,7 @@ def adjust_chart(
     """
     layout = config.get("layout", {}).copy()
     grid_config = config.get("grid", {})
-    annotations_config = config.get("annotations", {})
+    annotations_config = config.get("annotations", {}).copy()
 
     # Adjust layout
     layout.update(
