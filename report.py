@@ -219,15 +219,14 @@ def collect_md_content(
         # Add backlink to the Table-of-contents at the end of each section
         content.append("[Back to table of contents](#table-of-contents)\n")
 
-    toc = "\n".join(toc)
-    content = "\n".join(content)
     timestamp = time.strftime("%Y-%m-%d %H:%M", time.localtime())
+    toc = "\n".join(toc)
 
     md_output = [
         f"# {output} | {timestamp}\n\n",
         f"Data source: {source}\n\n",
         f"## Table of contents\n\n{toc}\n\n",
-        content,
+        "\n".join(content),
     ]
     return md_output
 
