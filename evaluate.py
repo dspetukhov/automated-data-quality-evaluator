@@ -24,8 +24,8 @@ def evaluate_data(
         config (dict[str, str | float]): Parameters for detecting outliers,
             passed to evaluate_data_outliers:
             - "criterion" (str): IQR or Z-score,
-            - "multiplier_iqr" (float): multiplier for IQR criterion (defaults to 1.5).
-            - "threshold_z_score" (float): threshold for Z-score criterion (defaults to 3.0).
+            - "multiplier_iqr" (float): multiplier for IQR criterion (default 1.5).
+            - "threshold_z_score" (float): threshold for Z-score criterion (default 3.0).
 
     Returns:
         tuple[list[dict[str, Any]], list[tuple[float | None, float | None]]]:
@@ -110,8 +110,8 @@ def evaluate_data_outliers(
         config (dict[str, str | float]): Parameters for detecting outliers:
             - "criterion" (str): "IQR" or "Z-score"; selects which bounds are
               returned. Any other value yields (None, None).
-            - "multiplier_iqr" (float): multiplier for IQR criterion (defaults to 1.5).
-            - "threshold_z_score" (float): threshold for Z-score criterion (defaults to 3.0).
+            - "multiplier_iqr" (float): multiplier for IQR criterion (default 1.5).
+            - "threshold_z_score" (float): threshold for Z-score criterion (default 3.0).
 
     Returns:
         tuple[int, int, tuple[float | None, float | None]]:
