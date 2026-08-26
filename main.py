@@ -15,14 +15,14 @@ def main(config_file_path: Path) -> None:
 
     Loads the configuration, reads the data source, preprocesses the data,
     and generates a markdown report. Any exception raised by the pipeline
-    steps is caught by ``@exception_handler``, logged, and suppressed.
+    steps is caught by `@exception_handler`, logged, and suppressed.
 
     Args:
         config_file_path: Path to the JSON configuration file.
 
     Raises:
-        SystemExit: If ``config_file_path`` is not a file, or if the
-            configuration's ``source`` key is absent or null.
+        SystemExit: If `config_file_path` is not a file, or
+            if the configuration's `source` key is absent or null.
     """
     # Try to load the configuration file
     if config_file_path.is_file():
