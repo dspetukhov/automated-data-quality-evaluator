@@ -146,11 +146,13 @@ def get_report_variables(
     if css_style:
         css_style_file_path = Path(css_style)
         if css_style_file_path.exists() and css_style_file_path.is_file():
-            file_path = css_style_file_path.relative_to(Path(output_dir), walk_up=True)
+            file_path = css_style_file_path.resolve().relative_to(
+                Path(output_dir).resolve(), walk_up=True
+            )
             md_content = [f"<link rel='stylesheet' href='{file_path}'>\n"]
 
     # Number of decimal places to format numbers in markdown tables
-    precision = config.get("markdown", {}).get("float_precision")
+    precision = config.get("markdown", {}).get("float_precision", 4)
 
     # Outliers detection parameters
     outliers_config = config.get("outliers", {})
@@ -256,6 +258,9 @@ def make_md_table(data: list[dict], precision: int | None) -> str:
         col_index = [" " if key == "title" else f"**{key}**"]
         col_values = [format_number(item.get(key), precision) for item in data]
         rows.append(col_index + col_values)
+
+    if not rows:
+        return "\n"
 
     # Create markdown table using `tabulate`
     return (
