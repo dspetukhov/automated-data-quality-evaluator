@@ -168,7 +168,7 @@ def collect_md_content(
     content: list[str],
     output: str,
     source: str,
-    precision: int | None = 4,
+    precision: int,
 ) -> list[str]:
     """Process data to create markdown content
     by updating table-of-contents and content lists.
@@ -254,7 +254,7 @@ def make_md_table(data: list[dict], precision: int | None) -> str:
 
     # Compose formatted table content
     rows = []
-    for key in data[0].keys():
+    for key in data[0]:
         col_index = [" " if key == "title" else f"**{key}**"]
         col_values = [format_number(item.get(key), precision) for item in data]
         rows.append(col_index + col_values)
@@ -301,7 +301,7 @@ def write_md_file(content: list[str], output: str, file_name: str = None) -> Non
         f.writelines(content)
 
 
-def format_number(value: Any, precision: int = 4) -> str:
+def format_number(value: Any, precision: int) -> str:
     """Format float numbers with specified precision.
 
     This function formats a float or a tuple of floats to a string with
