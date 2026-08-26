@@ -79,7 +79,7 @@ def make_preprocessing(
     if isinstance(config.get("streaming_chunk_size"), int):
         pl.Config.set_streaming_chunk_size(config["streaming_chunk_size"])
 
-    # Aggregate data by time intervals / buckets
+    # Aggregate data by time intervals
     lf_agg = lf.group_by(TIME_INTERVAL_COL).agg(aggs).sort(TIME_INTERVAL_COL)
     # lf_agg.explain()  # uncomment to get the query plan or turn off/on optimizations
     lf_agg = lf_agg.collect(engine=config.get("engine", "auto"))
@@ -172,7 +172,7 @@ def process_date_column(
             # Convert date_column of string type into Polars date type
             lf = lf.with_columns(pl.col(date_column).str.to_date(strict=True))
 
-        # Divide date or datetime range into time intervals / buckets
+        # Divide date or datetime range into time intervals
         lf = lf.with_columns(pl.col(date_column).dt.truncate(time_interval))
 
         # Rename date_column as TIME_INTERVAL_COL for consistency
