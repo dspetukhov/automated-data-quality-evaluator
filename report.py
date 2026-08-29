@@ -1,4 +1,4 @@
-"""Assemble the markdown report with embedded charts and tables."""
+"""Assembles the markdown report with embedded charts and tables and writes it to disk."""
 
 import time
 from pathlib import Path
@@ -22,27 +22,23 @@ from utility import (
 def make_report(
     df: DataFrame, metadata: dict[str, str | None], config: dict[str, Any]
 ) -> None:
-    """Generate markdown report with charts and tables.
+    """Create markdown report with charts and tables.
 
     This function produces a markdown report with charts and tables
-    by processing input data frame and metadata
-    according to the parameters specified in the configuration file.
+    by processing input data frame and metadata according to the
+    parameters specified in the configuration file.
 
     Args:
-        df (DataFrame): Aggregated per-interval data, expected to contain
-            a `TIME_INTERVAL_COL` column plus per-column stat columns
-            prefixed with `PREFIX_COL`/`PREFIX_COL_E`.
+        df (DataFrame): Aggregated per-time-interval data, expected to
+        contain a `TIME_INTERVAL_COL` column plus per-column stat columns
+        prefixed with `PREFIX_COL`/`PREFIX_COL_E`.
         metadata (dict[str, str | None]): Dict of aggregated columns
-            indicating types for numeric columns. A truthy value for a
-            column enables charting of its extra numeric stats
-            (min/max/mean/median/std).
+            indicating types for numeric columns.
         config (dict[str, Any]): Configuration dictionary specifying
             data source name, markdown options, and plotting options.
-            Only the `output`, `source`, `markdown`, `outliers`, and
-            `plotly` keys are used directly by this function.
 
     Returns:
-        None: Function writes the report to disk.
+        None: Writes the report to disk on success.
     """
     # Get key variables to make the report
     output, source, content, precision, outliers, plotly = get_report_variables(config)
@@ -52,7 +48,8 @@ def make_report(
     # representing general aggregations of source data:
     # number of values and target average
     data = df.select(
-        [TIME_INTERVAL_COL] + [item for item in df.columns if item.startswith(" __")]
+        [TIME_INTERVAL_COL]
+        + [item for item in df.columns if item.startswith(" {PREFIX_COL}")]
     )
     col = OVERVIEW_COL
     # Evaluate data
@@ -71,7 +68,11 @@ def make_report(
 
         data = df.select(
             [TIME_INTERVAL_COL]
-            + [item for item in df.columns if item.startswith(f"{PREFIX_COL} {col} __")]
+            + [
+                item
+                for item in df.columns
+                if item.startswith(f"{PREFIX_COL} {col} {PREFIX_COL}")
+            ]
         )
         evals, bounds = evaluate_data(data, outliers)
         data_evals[col] = {"evals": evals}
@@ -86,7 +87,7 @@ def make_report(
                 + [
                     item
                     for item in df.columns
-                    if item.startswith(f"{PREFIX_COL_E} {col} __")
+                    if item.startswith(f"{PREFIX_COL_E} {col} {PREFIX_COL}")
                 ]
             )
             evals, bounds = evaluate_data(data, outliers)
@@ -101,7 +102,7 @@ def make_report(
     # Collect markdown content
     content = collect_md_content(data_evals, content, output, source, precision)
 
-    # Write content as a markdown file
+    # Write content to file
     write_md_file(content, output, config.get("markdown", {}).get("name"))
 
 
@@ -110,32 +111,30 @@ def get_report_variables(
 ) -> tuple[str, str, list[str], int | None, dict, dict]:
     """Get key variables to make the report using the configuration provided.
 
-    This function creates variables necessary for making markdown report
-    based on the specified configuration. They include:
-    output directory to store report data, path to the data source,
-    style for markdown tables, precision to format floats in markdown tables,
-    outliers detection parameters, Plotly parameters for charts.
+    This function pulls variables from the configuration for markdown report
+    generation. They include: output directory to store report data, path to
+    the data source, style for markdown tables, precision to format floats in
+    markdown tables, outliers detection parameters, Plotly parameters for charts.
 
-    As a side effect, creates the output directory (`config["output"]`, or a
-    name derived from `config["source"]["file_path"]`, or `"postgresql"`) if
-    it does not already exist.
+    Creates the output directory for storing markdown report file and charts
+    if it does not exist.
 
     Args:
         config (dict[str, Any]): Configuration dictionary. Reads
-            `output`, `source.file_path`/`source.query`,
-            `markdown.css_style`, `markdown.float_precision`, `outliers`,
-            and `plotly`.
+            "output", "source.file_path"/"source.query",
+            "markdown.css_style", "markdown.float_precision",
+            "outliers", and "plotly".
 
     Returns:
         tuple[str, str, list[str], int | None, dict, dict]:
             - Directory name to store report file and charts.
             - Formatted path to the file to read or SQL query to get data.
             - Content of markdown report: a one-element list with a CSS
-              `<link>` tag if `markdown.css_style` points to an existing
+              `<link>` tag if "markdown.css_style" points to an existing
               file, resolved relative to the output directory; otherwise
               an empty list.
             - Precision to format floats in markdown tables; defaults to
-              4 decimal places when `markdown.float_precision` is unset.
+              4 decimal places when "markdown.float_precision" is unset.
             - Outliers detection parameters.
             - Plotly configuration for charts.
     """
@@ -189,21 +188,16 @@ def collect_md_content(
     source: str,
     precision: int,
 ) -> list[str]:
-    """Process data to create markdown content by updating table-of-contents and content lists.
-
-    This function appends new entry to the table-of-contents list
-    and appends formatted markdown string to the content list.
+    """Collects markdown content with table-of-contents from input data.
 
     Args:
-        data (dict[str, Any]): Maps column name (or `OVERVIEW_COL`) to a
-            dict with an `"evals"` list (passed to `make_md_table`) and,
-            for numeric columns, `"evals_numeric"` and `"dtype"` entries
-            used to render an extra stats section.
-        content (list[str]): List with markdown table style string.
-        output (str): Directory name to store report file, used only in
-            the report title heading.
-        source (str): Path to the file to read or SQL query to get data.
-        precision (int): Number of decimal places to format numbers.
+        data (dict[str, Any]): Raw data to construct markdown content with
+            sections, tables, and reference links.
+        content (list[str]): Content initialized by `get_report_variables`.
+        output (str): Directory name to store report file, used
+            only in the report header.
+        source (str): Path to the file to read or SQL query to fetch data.
+        precision (int): Number of decimal places to format `float` values.
 
     Returns:
         list[str]: List of strings to be written in file.
@@ -238,7 +232,7 @@ def collect_md_content(
                     table=make_md_table(data[col]["evals_numeric"], precision),
                 )
             )
-        # Add backlink to the Table-of-contents at the end of each section
+        # Add backlink to the table-of-contents at the end of each section
         content.append("[Back to table of contents](#table-of-contents)\n")
 
     timestamp = time.strftime("%Y-%m-%d %H:%M", time.localtime())
@@ -256,23 +250,18 @@ def collect_md_content(
 def make_md_table(data: list[dict], precision: int | None) -> str:
     """Create a markdown table from input data.
 
-    This function converts a list of dictionaries
-    into a markdown table using the tabulate library.
-    The table is returned as a string
-    to be included as a part of the markdown report.
-
-    Each dict key becomes a table row (transposed layout); `data` is padded
-    with empty dicts up to a minimum of 2 entries, since `tabulate` needs at
-    least a header and one data column.
+    This function converts a list of dictionaries into a markdown table
+    using the tabulate library. Dict values for a specific key form
+    a table row. The table is returned as a string to be included
+    as a part of the markdown report.
 
     Args:
         data (list[dict]): List of dictionaries with calculated statistics.
-        precision (int | None): Number of decimal places to format numbers.
-            Passed through to `format_number`.
+        precision (int | None): Number of decimal places to format `float`
+            passed through to `format_number`.
 
     Returns:
-        str: Markdown table, or a single newline character if `data` is
-            empty (no keys to build rows from).
+        str: Markdown table, or a single newline character if `data` is empty.
     """
     # Ensure the minimum number of columns is 2
     data = list(data)
@@ -289,7 +278,7 @@ def make_md_table(data: list[dict], precision: int | None) -> str:
     if not rows:
         return "\n"
 
-    # Create markdown table using `tabulate`
+    # Create markdown table
     return (
         tabulate(
             rows,
@@ -302,30 +291,27 @@ def make_md_table(data: list[dict], precision: int | None) -> str:
 
 
 @exception_handler(exit_on_error=True)
-def write_md_file(content: list[str], output: str, file_name: str = None) -> None:
-    """Create the markdown report file.
+def write_md_file(content: list[str], output: str, file_name: str | None) -> None:
+    """Write markdown file to disk.
 
-    This function creates a markdown file that includes a table-of-contents
-    (TOC) and the main content sections.
-    The name of the source data is included for reference.
+    This function writes a markdown file to disk, adding `.md` extension if absent.
+    The name of the file is defined by file_name variable (default README.md).
     The file is written to the specified output directory.
-    The name of the file is defined by file_name variable,
-    defaults to README.md.
 
     Args:
-        content (list[str]): List of strings for each markdown section.
-        output (str): Output directory path where markdown file will be saved.
-        file_name (str): Name of the markdown file.
+        content (list[str]): List of strings with content in Markdown format.
+        output (str): Output directory where the file will be saved.
+        file_name (str): The name of the file to be written.
 
     Returns:
-        None: Function writes markdown file to disk.
+        None: Writes the markdown file to disk.
 
     Raises:
         SystemExit: If writing the file fails (e.g. `output` directory
             does not exist); the exception is logged and the process
             exits with status 1.
     """
-    # Adjust file_name if it is not None
+    # Add extension to file_name if it is necessary
     if file_name and not file_name.endswith(".md"):
         file_name += ".md"
     # Write final content string to file
@@ -334,24 +320,19 @@ def write_md_file(content: list[str], output: str, file_name: str = None) -> Non
 
 
 def format_number(value: Any, precision: int) -> str:
-    """Format float numbers with specified precision.
+    """Format input value with specified precision.
 
-    This function formats a float or a tuple of floats to a string with
-    the given number of decimal places,
-    otherwise it returns it as a string unchanged.
-
-    A `float` is formatted with thousands separators at `precision` decimal
-    places, unless its `str()` representation has no `.` (e.g. values
-    Python renders in exponential form, like `1e+20`), in which case it is
-    formatted in scientific notation instead. A `tuple` of floats is
-    formatted as `mean ± std`-style pairs at `precision` decimal places. An
-    `int` (including `bool`, since `bool` is an `int` subclass) is
-    formatted with thousands separators, ignoring `precision`.
+    This function formats `float` with thousands separators at `precision`
+    decimal places if its string representation has `.`; if `float` is in
+    exponential form (like `1e+20`), it formats `float` in scientific
+    notation. A `tuple` of floats is formatted as `mean ± std`-style pairs
+    at `precision` decimal places. An `int` (including `bool`) is formatted
+    with thousands separators, ignoring `precision`.
 
     Args:
-        value (Union[float, tuple]): Number or a tuple of numbers to format.
+        value (float | tuple | int): Number or a tuple of numbers to format.
         precision (int): Number of decimal places to format `float`/`tuple`
-            values to; ignored for `int` values.
+            values; ignored for `int` values.
 
     Returns:
         str: Formatted number(s) as a string.
