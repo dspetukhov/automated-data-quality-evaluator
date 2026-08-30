@@ -49,7 +49,7 @@ def make_report(
     # number of values and target average
     data = df.select(
         [TIME_INTERVAL_COL]
-        + [item for item in df.columns if item.startswith(" {PREFIX_COL}")]
+        + [item for item in df.columns if item.startswith(f" {PREFIX_COL}")]
     )
     col = OVERVIEW_COL
     # Evaluate data
