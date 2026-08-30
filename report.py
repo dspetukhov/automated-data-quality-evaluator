@@ -126,7 +126,7 @@ def get_report_variables(
             "outliers", and "plotly".
 
     Returns:
-        tuple[str, str, list[str], int | None, dict, dict]:
+        tuple[str, str, list[str], int, dict, dict]:
             - Directory name to store report file and charts.
             - Formatted path to the file to read or SQL query to get data.
             - Content of markdown report: a one-element list with a CSS
@@ -152,7 +152,7 @@ def get_report_variables(
     # Determine and format source of data for markdown report
     if config["source"].get("file_path"):
         # Replace "*" to ensure correct representation in Markdown
-        source = "**{}**".format(config["source"]["file_path"].replace("*", "\*"))
+        source = "**{}**".format(config["source"]["file_path"].replace("*", r"\*"))
     else:
         source = "\n```sql\n{}\n```\n".format(config["source"]["query"])
 
@@ -247,7 +247,7 @@ def collect_md_content(
     return md_output
 
 
-def make_md_table(data: list[dict], precision: int | None) -> str:
+def make_md_table(data: list[dict], precision: int) -> str:
     """Create a markdown table from input data.
 
     This function converts a list of dictionaries into a markdown table
@@ -257,7 +257,7 @@ def make_md_table(data: list[dict], precision: int | None) -> str:
 
     Args:
         data (list[dict]): List of dictionaries with calculated statistics.
-        precision (int | None): Number of decimal places to format `float`
+        precision (int): Number of decimal places to format `float`
             passed through to `format_number`.
 
     Returns:
