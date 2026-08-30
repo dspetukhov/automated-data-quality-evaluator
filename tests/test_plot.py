@@ -121,6 +121,19 @@ class TestHighlightOutliers:
         assert shapes[0].x0 == min(x)
         assert shapes[0].x1 == max(x)
 
+    def test_null_in_x_series_does_not_raise(self):
+        # FIXED: x0/x1 used to be computed with Python's builtin min()/max(),
+        # which raise TypeError when x contains a null (e.g. a null-keyed
+        # group produced by grouping a date column with missing values).
+        # Now uses Series.min()/max(), which skip nulls like data.min() above.
+        fig = self._fig()
+        x = pl.Series([date(2024, 1, 1), None, date(2024, 1, 5)])
+        data = pl.Series([1, 2, 3])
+        result = highlight_outliers(fig, 0, x, data, (0.5, 2.5), 2, {})
+        shapes = result.layout.shapes
+        assert shapes[0].x0 == date(2024, 1, 1)
+        assert shapes[0].x1 == date(2024, 1, 5)
+
     def test_row_col_placement_derived_from_subplot_index(self):
         # subplot index 3 with n_cols=2 -> row 2, col 2 (1-indexed).
         fig = self._fig()
