@@ -1,13 +1,13 @@
 import sys
 import traceback
-from typing import Callable
+from collections.abc import Callable
 from functools import wraps
+
 from .setup_logging import logging
 
 
 def exception_handler(exit_on_error: bool = False):
-    """
-    Decorator to handle exceptions in the decorated function.
+    """Decorator to handle exceptions in the decorated function.
 
     This decorator wraps a function to catch and log exceptions
     using a customized error message through sys and traceback modules.
@@ -29,21 +29,16 @@ def exception_handler(exit_on_error: bool = False):
         def my_function(...):
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         def make_message(exc_info: tuple) -> str:
             exc_type, exc_obj, tb_obj = exc_info
             extract_tb = traceback.extract_tb(tb_obj)
             if extract_tb:
                 summary = extract_tb[min(1, len(extract_tb) - 1)]
-                return "{0}: {1}#{2}: {3}: {4}".format(
-                    exc_type.__name__,
-                    summary.filename,
-                    summary.lineno,
-                    summary.line,
-                    str(exc_obj)
-                )
+                return f"{exc_type.__name__}: {summary.filename}#{summary.lineno}: {summary.line}: {str(exc_obj)}"
             else:
-                return "{0}: {1}".format(exc_type.__name__, str(exc_obj))
+                return f"{exc_type.__name__}: {str(exc_obj)}"
 
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -54,5 +49,7 @@ def exception_handler(exit_on_error: bool = False):
                 if exit_on_error:
                     sys.exit(1)
                 return args[0] if args else None
+
         return wrapper
+
     return decorator
