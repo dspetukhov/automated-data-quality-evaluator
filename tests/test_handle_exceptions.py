@@ -1,6 +1,7 @@
 """Baseline regression tests for handle_exceptions.py — captures CURRENT behavior as-is.
 
-Suspected bugs are noted inline as comments; none are fixed here.
+Behaviors that looked suspicious on first read are noted inline as comments;
+confirmed with the author to be intentional design choices, not bugs.
 """
 
 import logging
@@ -46,10 +47,11 @@ class TestExceptionDefaultBehavior:
         assert boom() is None
 
     def test_returns_none_when_only_kwargs_passed(self):
-        # BUG-SUSPECT: the fallback `args[0] if args else None` only inspects
-        # positional args. If the caller passes everything as a keyword
-        # argument, `args` is empty and None is returned instead of, e.g.,
-        # the value of that keyword argument.
+        # CONFIRMED INTENDED: the fallback `args[0] if args else None` only
+        # inspects positional args, matching the docstring's documented
+        # behavior ("returns the first argument or None if no arguments").
+        # A kwargs-only call has no positional arguments, so None here is
+        # by design, not a defect.
         @exception_handler()
         def boom(x=None):
             raise ValueError("bad")
@@ -85,10 +87,11 @@ class TestExitOnError:
 
 
 class TestBareExceptScope:
-    # BUG-SUSPECT: the wrapper catches `Exception` only, not `BaseException`.
-    # This means SystemExit (e.g. from an underlying sys.exit() call inside
-    # the wrapped function) propagates unhandled and is NOT logged, even
-    # though the decorator's job is to catch/log errors from the function.
+    # CONFIRMED INTENDED: the wrapper catches `Exception` only, not
+    # `BaseException`. SystemExit/KeyboardInterrupt propagate unhandled and
+    # unlogged, which is standard, idiomatic Python practice — widening this
+    # to `except BaseException` would risk swallowing intentional process
+    # exits and Ctrl-C.
     def test_systemexit_from_wrapped_function_is_not_caught(self):
         @exception_handler(exit_on_error=False)
         def boom():
@@ -123,13 +126,12 @@ class TestLogMessageFormat:
         assert __file__ in message
 
     def test_message_references_second_traceback_frame_not_deepest(self, caplog):
-        # BUG-SUSPECT: `make_message` always reports
+        # CONFIRMED INTENDED: `make_message` always reports
         # extract_tb[min(1, len(extract_tb) - 1)], i.e. the *second* frame
         # from the top (the wrapped function's own frame), rather than the
-        # deepest frame where the exception actually originated. For calls
-        # nested more than one level deep, the reported filename/line
-        # therefore points at the call site inside the wrapped function,
-        # not at the line that actually raised.
+        # deepest frame where the exception actually originated. This is a
+        # deliberate design choice: point at the wrapped function's own
+        # call site, not at arbitrary depth inside its callees.
         def helper():
             raise ValueError("boom from helper")
 
