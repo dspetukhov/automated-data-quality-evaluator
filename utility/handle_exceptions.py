@@ -12,9 +12,9 @@ def exception_handler(exit_on_error: bool = False):
     """Build a decorator that catches and logs exceptions from the wrapped function.
 
     On exception, the decorator logs an error message identifying the
-    exception type, the source location of the wrapped function's own
-    frame, and the exception's string representation. `SystemExit` and
-    `KeyboardInterrupt` are not caught, since only `Exception` is handled.
+    exception type, the exception location inside the wrapped function,
+    and its string representation. `SystemExit` and `KeyboardInterrupt`
+    are not caught, since only `Exception` is handled.
 
     Args:
         exit_on_error (bool): If True, exit the process with status 1
