@@ -1,3 +1,5 @@
+"""Decorator that catches, logs, and optionally exits on exceptions raised by a wrapped function."""
+
 import sys
 import traceback
 from collections.abc import Callable
@@ -7,22 +9,21 @@ from .setup_logging import logging
 
 
 def exception_handler(exit_on_error: bool = False):
-    """Decorator to handle exceptions in the decorated function.
+    """Build a decorator that catches and logs exceptions from the wrapped function.
 
-    This decorator wraps a function to catch and log exceptions
-    using a customized error message through sys and traceback modules.
-    If specified, it can terminate the program in case of error.
+    On exception, the decorator logs an error message identifying the
+    exception type, the source location of the wrapped function's own
+    frame, and the exception's string representation. `SystemExit` and
+    `KeyboardInterrupt` are not caught, since only `Exception` is handled.
 
     Args:
-        exit_on_error (bool): If True, the program will log the exception
-            and exit with status 1. If False, the function returns
-            the first argument or None if no arguments.
+        exit_on_error (bool): If True, exit the process with status 1
+            after logging the exception. If False, swallow the exception
+            and return the wrapped call's first positional argument, or
+            None if it was called with no positional arguments.
 
     Returns:
-        Callable: Wrapped function with exception handling.
-
-    Raises:
-        SystemExit: If exit_on_error is True and an exception occurs.
+        Callable: A decorator that wraps a function with exception handling.
 
     Example:
         @exception_handler(exit_on_error=True)
