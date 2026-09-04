@@ -9,7 +9,7 @@ from .setup_logging import logging
 
 
 def exception_handler(exit_on_error: bool = False):
-    """Build a decorator that catches and logs exceptions from the wrapped function.
+    """Catch and log exceptions from the wrapped function.
 
     On exception, the decorator logs an error message identifying the
     exception type, the exception location inside the wrapped function,
