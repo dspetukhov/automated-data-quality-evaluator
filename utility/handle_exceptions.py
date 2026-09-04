@@ -36,8 +36,8 @@ def exception_handler(exit_on_error: bool = False) -> Callable[[Callable], Calla
             exc_type, exc_obj, tb_obj = exc_info
             extract_tb = traceback.extract_tb(tb_obj)
             if extract_tb:
-                # Intentionally the wrapped function's own call-site frame, not the
-                # deepest frame where the exception actually originated.
+                # Intentionally selects the call-site frame of the wrapped function,
+                # not the deepest frame where the exception actually originated.
                 summary = extract_tb[min(1, len(extract_tb) - 1)]
                 return f"{exc_type.__name__}: {summary.filename}#{summary.lineno}: {summary.line}: {str(exc_obj)}"
             else:
