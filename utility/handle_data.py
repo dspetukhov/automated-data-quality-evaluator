@@ -214,7 +214,6 @@ def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str
         }
     else:
         logging.warning(
-            "Unsupported input type for 'storage_options' or 'uri': "
-            f"expected dict or str, got {type(params).__name__}"
+            f"Unsupported input type: expected dict or str, got {type(params).__name__}"
         )
         return params
