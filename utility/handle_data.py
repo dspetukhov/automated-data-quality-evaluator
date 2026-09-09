@@ -1,4 +1,4 @@
-"""Data source reading utilities for the automated data quality evaluator."""
+"""Reads CSV, XLSX, Parquet, or Iceberg file formats and PostgreSQL databases."""
 
 import os
 
@@ -27,21 +27,31 @@ def read_source(source: dict[str, str]) -> pl.LazyFrame:
     are resolved from environment variables when prefixed with `$`.
 
     Args:
-        source: Data source specification dict. Accepted shapes:
+        source: Data source specification dict defined by `source` key
+            in the configuration. Can read:
 
-            - File-based: must contain `"file_path"` (str). Optional keys:
-              `"file_format"` (str), `"storage_options"` (dict),
-              `"schema_overrides"` (dict[str, str]).
-            - Database: must contain both `"query"` (str) and `"uri"`
-              (str, PostgreSQL connection URI).
+            - Files: must contain `"file_path"` (str). Optional keys:
+              `"file_format"` (str, one of `"csv"`, `"parquet"`,
+              `"iceberg"`, `"xlsx"`, case-insensitive; inferred from the
+              `"file_path"` extension when omitted), `"storage_options"`
+              (dict[str, str], applied for `"csv"`, `"parquet"`, and
+              `"iceberg"` only, ignored for `"xlsx"`),
+              `"schema_overrides"` (dict[str, str], applied for `"csv"`
+              and `"xlsx"` only, ignored for `"parquet"` and `"iceberg"`).
+            - Databases: must contain both `"query"` (str, SQL query) and
+              `"uri"` (str, PostgreSQL connection URI).
 
     Returns:
         pl.LazyFrame containing the loaded data, ready for processing.
 
     Raises:
-        SystemExit: If `source` is not a dict, if neither `"file_path"`
-            nor the `"query"`/`"uri"` pair is present, or if the
-            underlying read operation raises an exception.
+        SystemExit:
+            - If `source` is not a dict,
+            - If neither `"file_path"` nor the `"query"`/`"uri"` pair is present,
+            - If `"file_format"` (or the extension inferred from `"file_path"`)
+                does not match a supported format,
+            - If the underlying read operation raises any exception (converted to
+                `SystemExit` by the `exception_handler` decorator).
     """
     if not isinstance(source, dict):
         raise SystemExit(
@@ -97,17 +107,20 @@ def _resolve_file_format(source: str, file_format: str | None) -> str:
     inferred from the file extension of `source` (case-insensitive).
 
     Args:
-        source: Path or URL to the file; used for extension-based detection
+        source: Path or URL to the file from `source.file_path` key
+            in the configuration; used for extension-based detection
             when `file_format` is `None`.
-        file_format: Explicit format string or `None` for auto-detection.
+        file_format: Explicit format string from `source.file_format` key
+            in the configuration or `None` for auto-detection.
 
     Returns:
         Lowercase format string, guaranteed to be a key in `_READERS`.
 
     Raises:
-        SystemExit: If `file_format` is an unrecognised string, or if
-            `file_format` is `None` and the extension of `source`
-            does not match any supported format.
+        SystemExit:
+            - If `file_format` is an unrecognised string,
+            - If `file_format` is `None` and `source` extension
+                does not match any supported format.
     """
     if isinstance(file_format, str):
         ff_lower = file_format.lower()
@@ -133,19 +146,17 @@ def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
     """Map string type names to Polars DataType instances.
 
     Unknown type strings are skipped with a warning. Non-dict, non-`None`
-    input logs a warning and returns `None`.
-
-    Supported type names: `"String"`, `"Date"`, `"Datetime"`,
+    input logs a warning and returns `None`. Supported type names
+    (case-sensitive, matched exactly): `"String"`, `"Date"`, `"Datetime"`,
     `"Categorical"`.
 
     Args:
-        data: Mapping of column name to type-name string, or `None` to
-            opt out of schema overrides. Any other non-dict type is treated
-            the same as `None`.
+        data: Mapping of column name to type-name string from
+            `source.schema_overrides` in the configuration.
 
     Returns:
         A `dict[str, pl.DataType]` mapping column names to Polars types,
-        or `None` if `data` is `None` or not a `dict`.
+        or `None` if `data` is not a `dict`.
     """
     dtypes = {
         "String": pl.String,
@@ -162,8 +173,6 @@ def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
             else:
                 logging.warning(f"Unsupported data type '{value}' for column '{key}'")
         return output
-    elif data is None:
-        return None
     else:
         logging.warning(f"'schema_overrides' expected dict, got {type(data).__name__}")
         return None
@@ -180,16 +189,17 @@ def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str
     as-is with a warning.
 
     Args:
-        params: A `str`, a `dict[str, Any]`, or any other type.
-            Dict values that are not strings are passed through unchanged.
+        params: A `str` or `dict[str, Any]` (typically `source.uri` or
+            `source.storage_options` value from the configuration) or
+            any other type.
 
     Returns:
-        For `str` input: the resolved `str`, or `None` if the
+        - For `str` input: the resolved `str`, or `None` if the
         referenced environment variable is absent.
-        For `dict` input: a new `dict` with the same keys and each
+        - For `dict` input: a new `dict` with the same keys and each
         string value resolved (`str | None`); non-string values are
         unchanged.
-        For any other type: the original value unchanged.
+        - For any other type: the original value unchanged.
     """
 
     def _resolve_environment_variable(value: str) -> str | None:
