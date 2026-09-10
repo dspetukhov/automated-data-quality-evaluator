@@ -1,6 +1,7 @@
 """Reads CSV, XLSX, Parquet, or Iceberg file formats and PostgreSQL databases."""
 
 import os
+from typing import Any
 
 import polars as pl
 
@@ -19,7 +20,7 @@ _SUPPORTED_FORMATS = ", ".join(_READERS)
 
 
 @exception_handler(exit_on_error=True)
-def read_source(source: dict[str, str]) -> pl.LazyFrame:
+def read_source(source: dict[str, Any]) -> pl.LazyFrame:
     """Read a data source into a Polars LazyFrame.
 
     Supports CSV, Parquet, Iceberg, XLSX (file-based), and PostgreSQL
@@ -142,7 +143,9 @@ def _resolve_file_format(source: str, file_format: str | None) -> str:
     )
 
 
-def handle_schema_overrides(data: dict[str, str]) -> dict[str, pl.DataType]:
+def handle_schema_overrides(
+    data: dict[str, str] | None,
+) -> dict[str, pl.DataType] | None:
     """Map string type names to Polars DataType instances.
 
     Unknown type strings are skipped with a warning. Non-dict, non-`None`
