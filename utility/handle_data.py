@@ -1,4 +1,4 @@
-"""Reads CSV, XLSX, Parquet, or Iceberg file formats and PostgreSQL databases."""
+"""Read CSV, XLSX, Parquet, or Iceberg file formats and PostgreSQL databases."""
 
 import os
 from typing import Any
@@ -28,8 +28,8 @@ def read_source(source: dict[str, Any]) -> pl.LazyFrame:
     are resolved from environment variables when prefixed with `$`.
 
     Args:
-        source: Data source specification dict defined by `source` key
-            in the configuration. Can read:
+        source (dict[str, Any]): Data source specification dict defined by
+            `source` key in the configuration. Can read:
 
             - Files: must contain `"file_path"` (str). Optional keys:
               `"file_format"` (str, one of `"csv"`, `"parquet"`,
@@ -43,14 +43,14 @@ def read_source(source: dict[str, Any]) -> pl.LazyFrame:
               `"uri"` (str, PostgreSQL connection URI).
 
     Returns:
-        pl.LazyFrame containing the loaded data, ready for processing.
+        `pl.LazyFrame` containing the loaded data, ready for processing.
 
     Raises:
         SystemExit:
-            - If `source` is not a dict,
-            - If neither `"file_path"` nor the `"query"`/`"uri"` pair is present,
+            - If `source` is not a `dict`.
+            - If neither `"file_path"` nor the `"query"`/`"uri"` pair is present.
             - If `"file_format"` (or the extension inferred from `"file_path"`)
-                does not match a supported format,
+                does not match a supported format.
             - If the underlying read operation raises any exception (converted to
                 `SystemExit` by the `exception_handler` decorator).
     """
@@ -108,18 +108,19 @@ def _resolve_file_format(source: str, file_format: str | None) -> str:
     inferred from the file extension of `source` (case-insensitive).
 
     Args:
-        source: Path or URL to the file from `source.file_path` key
+        source (str): Path or URL to the file from `source.file_path` key
             in the configuration; used for extension-based detection
             when `file_format` is `None`.
-        file_format: Explicit format string from `source.file_format` key
-            in the configuration or `None` for auto-detection.
+        file_format (str | None): Explicit format string from
+            `source.file_format` key in the configuration or `None` for
+            auto-detection.
 
     Returns:
         Lowercase format string, guaranteed to be a key in `_READERS`.
 
     Raises:
         SystemExit:
-            - If `file_format` is an unrecognised string,
+            - If `file_format` is an unrecognised string.
             - If `file_format` is `None` and `source` extension
                 does not match any supported format.
     """
@@ -146,16 +147,16 @@ def _resolve_file_format(source: str, file_format: str | None) -> str:
 def handle_schema_overrides(
     data: dict[str, str] | None,
 ) -> dict[str, pl.DataType] | None:
-    """Map string type names to Polars DataType instances.
+    """Map string type names to `pl.DataType` instances.
 
-    Unknown type strings are skipped with a warning. Non-dict, non-`None`
+    Unknown type strings are skipped with a warning. Non-`dict`, non-`None`
     input logs a warning and returns `None`. Supported type names
     (case-sensitive, matched exactly): `"String"`, `"Date"`, `"Datetime"`,
     `"Categorical"`.
 
     Args:
-        data: Mapping of column name to type-name string from
-            `source.schema_overrides` in the configuration.
+        data (dict[str, str] | None): Mapping of column name to type-name
+            string from `source.schema_overrides` in the configuration.
 
     Returns:
         A `dict[str, pl.DataType]` mapping column names to Polars types,
@@ -192,9 +193,9 @@ def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str
     as-is with a warning.
 
     Args:
-        params: A `str` or `dict[str, Any]` (typically `source.uri` or
-            `source.storage_options` value from the configuration) or
-            any other type.
+        params (str | dict[str, str]): A `str` or `dict[str, Any]`
+            (typically `source.uri` or `source.storage_options` value
+            from the configuration) or any other type.
 
     Returns:
         - For `str` input: the resolved `str`, or `None` if the
