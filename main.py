@@ -18,11 +18,11 @@ def main(config_file_path: Path) -> None:
     steps is caught by `@exception_handler`, logged, and suppressed.
 
     Args:
-        config_file_path: Path to the JSON configuration file.
+        config_file_path (Path): Path to the JSON configuration file.
 
     Raises:
         SystemExit: If `config_file_path` is not a file, or
-            if the configuration's `source` key is absent or null.
+            if `"source"` key is absent or null in the configuration.
     """
     # Try to load the configuration file
     if config_file_path.is_file():
