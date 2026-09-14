@@ -29,7 +29,7 @@ def read_source(source: dict[str, Any]) -> pl.LazyFrame:
 
     Args:
         source (dict[str, Any]): Data source specification dict defined by
-            `source` key in the configuration. Can read:
+            `"source"` key in the configuration. Can read:
 
             - Files: must contain `"file_path"` (str). Optional keys:
               `"file_format"` (str, one of `"csv"`, `"parquet"`,
@@ -108,11 +108,11 @@ def _resolve_file_format(source: str, file_format: str | None) -> str:
     inferred from the file extension of `source` (case-insensitive).
 
     Args:
-        source (str): Path or URL to the file from `source.file_path` key
+        source (str): Path or URL to the file from `"source.file_path"` key
             in the configuration; used for extension-based detection
             when `file_format` is `None`.
         file_format (str | None): Explicit format string from
-            `source.file_format` key in the configuration or `None` for
+            `"source.file_format"` key in the configuration or `None` for
             auto-detection.
 
     Returns:
@@ -156,7 +156,7 @@ def handle_schema_overrides(
 
     Args:
         data (dict[str, str] | None): Mapping of column name to type-name
-            string from `source.schema_overrides` in the configuration.
+            string from `"source.schema_overrides"` in the configuration.
 
     Returns:
         A `dict[str, pl.DataType]` mapping column names to Polars types,
@@ -194,7 +194,7 @@ def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str
 
     Args:
         params (str | dict[str, str]): A `str` or `dict[str, Any]`
-            (typically `source.uri` or `source.storage_options` value
+            (typically `"source.uri"` or `"source.storage_options"` value
             from the configuration) or any other type.
 
     Returns:
