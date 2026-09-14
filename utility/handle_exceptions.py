@@ -1,4 +1,4 @@
-"""Decorator that catches, logs, and optionally exits on exceptions raised by a wrapped function."""
+"""Catch, log, and optionally exit on exceptions raised by a wrapped function."""
 
 import sys
 import traceback
@@ -17,13 +17,13 @@ def exception_handler(exit_on_error: bool = False) -> Callable[[Callable], Calla
     are not caught, since only `Exception` is handled.
 
     Args:
-        exit_on_error (bool): If True, exit the process with status 1
-            after logging the exception. If False, swallow the exception
+        exit_on_error (bool): If `True`, exit the process with status 1
+            after logging the exception. If `False`, swallow the exception
             and return the wrapped call's first positional argument, or
-            None if it was called with no positional arguments.
+            `None` if it was called with no positional arguments.
 
     Returns:
-        Callable: A decorator that wraps a function with exception handling.
+        `Callable`: A decorator that wraps a function with exception handling.
 
     Example:
         @exception_handler(exit_on_error=True)
