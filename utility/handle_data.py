@@ -43,7 +43,7 @@ def read_source(source: dict[str, Any]) -> pl.LazyFrame:
               `"uri"` (str, PostgreSQL connection URI).
 
     Returns:
-        `pl.LazyFrame` containing the loaded data, ready for processing.
+        pl.LazyFrame containing the loaded data, ready for processing.
 
     Raises:
         SystemExit:
@@ -182,7 +182,9 @@ def handle_schema_overrides(
         return None
 
 
-def handle_environment_variables(params: str | dict[str, str]) -> str | dict[str, str]:
+def handle_environment_variables(
+    params: str | dict[str, str],
+) -> str | dict[str, str | None]:
     """Resolve `$VAR` placeholders in a string or dict of strings.
 
     Each string value starting with `$` has the leading `$` stripped and

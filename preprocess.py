@@ -33,7 +33,7 @@ def make_preprocessing(
             `"streaming_chunk_size"` (int), and `"engine"` (default `"auto"`).
 
     Returns:
-        `tuple[pl.DataFrame, dict[str, str | None]]`:
+        tuple[pl.DataFrame, dict[str, str | None]]:
             - Aggregated data with descriptive statistics per time interval.
             - Metadata dict mapping each column to its dtype as a string,
               or `None` for columns in `columns_to_exclude_extra_statistics`.
@@ -97,7 +97,7 @@ def apply_filter(lf: pl.LazyFrame, filter_str: str | None) -> pl.LazyFrame:
         filter_str (str | None): SQL expression to filter LazyFrame data.
 
     Returns:
-        `pl.LazyFrame`: Filtered LazyFrame, or the original one
+        pl.LazyFrame: Filtered LazyFrame, or the original one
         if `filter_str` is not a string.
     """
     if isinstance(filter_str, str):
@@ -123,7 +123,7 @@ def apply_transformations(
             `pl.sql_expr()`.
 
     Returns:
-        `pl.LazyFrame`: LazyFrame with transformed columns, or the original one
+        pl.LazyFrame: LazyFrame with transformed columns, or the original one
         if `transformations` is not a `dict`.
     """
     if isinstance(transformations, dict):
@@ -153,7 +153,7 @@ def process_date_column(
             e.g. `"1d"` for one day or `"1h"` for one hour.
 
     Returns:
-        `tuple[pl.LazyFrame, pl.Schema]`:
+        tuple[pl.LazyFrame, pl.Schema]:
             - LazyFrame with `date_column` divided into time intervals and
                 renamed to `TIME_INTERVAL_COL`.
             - Schema of the returned LazyFrame.
@@ -212,7 +212,7 @@ def collect_aggregations(
             `min`/`max`/`mean`/`median`/`std` statistics will not be calculated.
 
     Returns:
-        `tuple[list[pl.Expr], dict[str, str | None]]`:
+        tuple[list[pl.Expr], dict[str, str | None]]:
             - aggs: Aggregation expressions for `LazyFrame.agg()`.
             - metadata: Maps each processed column to its dtype as a string,
               or `None` if the column is in `columns_to_exclude_extra_statistics`.

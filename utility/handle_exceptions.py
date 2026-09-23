@@ -23,7 +23,7 @@ def exception_handler(exit_on_error: bool = False) -> Callable[[Callable], Calla
             `None` if it was called with no positional arguments.
 
     Returns:
-        `Callable`: A decorator that wraps a function with exception handling.
+        Callable: A decorator that wraps a function with exception handling.
 
     Example:
         @exception_handler(exit_on_error=True)
