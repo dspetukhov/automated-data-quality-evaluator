@@ -1,4 +1,4 @@
-"""Filters, transforms, and aggregates input data into per-time-interval descriptive statistics."""
+"""Filter, transform, and aggregate input data into per-time-interval descriptive statistics."""
 
 from typing import Any
 
@@ -21,27 +21,27 @@ def make_preprocessing(
     """Preprocess data for evaluation through aggregation by dates.
 
     Applies the configured filter and transformations, validates and divides
-    date_column into time intervals, collects per-column aggregation
+    `date_column` into time intervals, collects per-column aggregation
     expressions, and eagerly aggregates the LazyFrame by time interval.
 
     Args:
         lf (pl.LazyFrame): Input data.
         config (dict[str, Any]): Configuration dictionary. Reads the keys
-            "filter", "transformations", "date_column" (default "date_column"),
-            "time_interval" (default "1d"), "target_column" (default "target_column"),
-            "columns_to_exclude", "columns_to_exclude_extra_statistics",
-            "streaming_chunk_size" (int), and "engine" (default "auto").
+            `"filter"`, `"transformations"`, `"date_column"` (default `"date_column"`),
+            `"time_interval"` (default `"1d"`), `"target_column"` (default `"target_column"`),
+            `"columns_to_exclude"`, `"columns_to_exclude_extra_statistics"`,
+            `"streaming_chunk_size"` (int), and `"engine"` (default `"auto"`).
 
     Returns:
-        tuple[pl.DataFrame, dict[str, str | None]]:
+        `tuple[pl.DataFrame, dict[str, str | None]]`:
             - Aggregated data with descriptive statistics per time interval.
             - Metadata dict mapping each column to its dtype as a string,
-              or None for columns in columns_to_exclude_extra_statistics.
+              or `None` for columns in `columns_to_exclude_extra_statistics`.
 
     Raises:
-        SystemExit: Via the exception_handler decorator, if any exception is
+        SystemExit: Via the `exception_handler` decorator, if any exception is
             raised while preprocessing (e.g. an invalid or missing
-            date_column, or a malformed filter/transformation expression).
+            `date_column`, or a malformed filter/transformation expression).
     """
     # Apply filter for rows and columns
     lf = apply_filter(lf, config.get("filter"))
@@ -89,7 +89,7 @@ def make_preprocessing(
 def apply_filter(lf: pl.LazyFrame, filter_str: str | None) -> pl.LazyFrame:
     """Apply a SQL filter expression to a Polars LazyFrame.
 
-    If filter_str is not a string (e.g. None, absent from config),
+    If `filter_str` is not a string (e.g. `None`, absent from config),
     LazyFrame is returned unchanged.
 
     Args:
@@ -97,8 +97,8 @@ def apply_filter(lf: pl.LazyFrame, filter_str: str | None) -> pl.LazyFrame:
         filter_str (str | None): SQL expression to filter LazyFrame data.
 
     Returns:
-        pl.LazyFrame: Filtered LazyFrame, or the original one
-        if filter_str is not a string.
+        `pl.LazyFrame`: Filtered LazyFrame, or the original one
+        if `filter_str` is not a string.
     """
     if isinstance(filter_str, str):
         lf = lf.sql(filter_str)
@@ -111,20 +111,20 @@ def apply_transformations(
 ) -> pl.LazyFrame:
     """Apply SQL-expression transformations to a Polars LazyFrame.
 
-    Each transformation is added via with_columns(pl.sql_expr(expr).alias(
-    alias)); if alias matches an existing column name it replaces that
-    column, otherwise it creates a new one. If transformations is not a
-    dict (e.g. None, absent from config), LazyFrame is returned unchanged.
+    Each transformation is added via `with_columns(pl.sql_expr(expr).alias(alias))`;
+    if `alias` matches an existing column name it replaces that
+    column, otherwise it creates a new one. If `transformations` is not a
+    `dict` (e.g. `None`, absent from config), LazyFrame is returned unchanged.
 
     Args:
         lf (pl.LazyFrame): Input data.
         transformations (dict[str, str] | None): Mapping of column name
             (created or replaced) to a string of SQL code evaluated via
-            pl.sql_expr().
+            `pl.sql_expr()`.
 
     Returns:
-        pl.LazyFrame: LazyFrame with transformed columns, or the original one
-        if transformations is not a dict.
+        `pl.LazyFrame`: LazyFrame with transformed columns, or the original one
+        if `transformations` is not a `dict`.
     """
     if isinstance(transformations, dict):
         # Iterate over transformations specified in configuration file
@@ -138,29 +138,29 @@ def apply_transformations(
 def process_date_column(
     lf: pl.LazyFrame, schema: pl.Schema, date_column: str, time_interval: str
 ) -> tuple[pl.LazyFrame, pl.Schema]:
-    """Validate date_column, divide it into time intervals, and rename it.
+    """Validate `date_column`, divide it into time intervals, and rename it.
 
-    Checks that date_column is present in schema and is of a supported type
-    (String, Datetime, or Date), converts it to a Date if it is a String,
-    divides it into time intervals via pl.Expr.dt.truncate(), then renames
-    it to TIME_INTERVAL_COL for consistency within the tool.
+    Checks that `date_column` is present in `schema` and is of a supported type
+    (`String`, `Datetime`, or `Date`), converts it to a `Date` if it is a `String`,
+    divides it into time intervals via `pl.Expr.dt.truncate()`, then renames
+    it to `TIME_INTERVAL_COL` for consistency within the tool.
 
     Args:
         lf (pl.LazyFrame): Input data.
         schema (pl.Schema): Schema of input data.
         date_column (str): Name of the date/datetime column to process.
         time_interval (str): Interval size to divide date/datetime column,
-            e.g. "1d" for one day or "1h" for one hour.
+            e.g. `"1d"` for one day or `"1h"` for one hour.
 
     Returns:
-        tuple[pl.LazyFrame, pl.Schema]:
-            - LazyFrame with date_column divided into time intervals and
-                renamed to TIME_INTERVAL_COL.
+        `tuple[pl.LazyFrame, pl.Schema]`:
+            - LazyFrame with `date_column` divided into time intervals and
+                renamed to `TIME_INTERVAL_COL`.
             - Schema of the returned LazyFrame.
 
     Raises:
-        SystemExit: If date_column is absent from schema,
-            or its dtype is not one of String, Datetime, or Date.
+        SystemExit: If `date_column` is absent from `schema`,
+            or its dtype is not one of `String`, `Datetime`, or `Date`.
     """
     date_dtype = schema.get(date_column)
 
@@ -193,29 +193,29 @@ def collect_aggregations(
     """Collect per-time-interval aggregation expressions for each column.
 
     Always includes an expression for the row count per interval, and, if
-    target_column is set, its mean. For every remaining column (excluding
-    TIME_INTERVAL_COL and columns_to_exclude), adds "Number of unique
-    values" (n_unique() of non-null values, computed via drop_nulls() so
-    nulls are not counted as a distinct value) and "Proportion of missing values"
-    (mean of is_null()). Unless the column is in
-    columns_to_exclude_extra_statistics, also adds min/max/mean/median/std;
+    `target_column` is set, its mean. For every remaining column (excluding
+    `TIME_INTERVAL_COL` and `columns_to_exclude`), adds `"Number of unique
+    values"` (`n_unique()` of non-null values, computed via `drop_nulls()` so
+    nulls are not counted as a distinct value) and `"Proportion of missing values"`
+    (mean of `is_null()`). Unless the column is in
+    `columns_to_exclude_extra_statistics`, also adds `min`/`max`/`mean`/`median`/`std`;
     for non-numeric columns these are computed on string length
-    (cast to String then str.len_chars()) rather than on the values
+    (cast to `String` then `str.len_chars()`) rather than on the values
     themselves.
 
     Args:
         schema (pl.Schema): Schema of LazyFrame to be aggregated.
         target_column (str | None): Column to calculate target average per time interval,
-            or None to skip it.
+            or `None` to skip it.
         columns_to_exclude (list[str]): Columns excluded from processing entirely.
         columns_to_exclude_extra_statistics (list[str]): Columns for which
-            min/max/mean/median/std statistics will not be calculated.
+            `min`/`max`/`mean`/`median`/`std` statistics will not be calculated.
 
     Returns:
-        tuple[list[pl.Expr], dict[str, str | None]]:
-            - aggs: Aggregation expressions for LazyFrame.agg().
+        `tuple[list[pl.Expr], dict[str, str | None]]`:
+            - aggs: Aggregation expressions for `LazyFrame.agg()`.
             - metadata: Maps each processed column to its dtype as a string,
-              or None if the column is in columns_to_exclude_extra_statistics.
+              or `None` if the column is in `columns_to_exclude_extra_statistics`.
     """
     # Start with common aggregation expression for the number of values
     aggs = [pl.len().alias(" __Number of values")]
