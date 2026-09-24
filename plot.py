@@ -22,24 +22,24 @@ def make_charts(
     The first column in data is the time-interval column that is used
     as the x-axis for every subplot. Every other column is plotted
     in its own subplot as a line trace, with outlier regions highlighted.
-    The chart is written to file_path.
+    The chart is written to `file_path`.
 
     Args:
         data (DataFrame): Data to plot.
         bounds (list[tuple[float | None, float | None]]): Boundaries
-            to highlight outliers as produced by evaluate.evaluate_data
-            (aligned 1:1 by index with data.columns[1:]).
+            to highlight outliers as produced by `evaluate.evaluate_data`
+            (aligned 1:1 by index with `data.columns[1:]`).
         config (dict[str, Any]): Plotly styling settings:
-            - "subplots" (dict): Subplot kwargs passed to make_subplots.
-            - "plot" (dict): Trace kwargs passed to Scatter.
-            - "outliers" (dict): Style for outlier regions passed to highlight_outliers.
-            - "layout", "grid", "annotations", "tickformat": Extra settings passed to adjust_chart.
-            - "format" (str): image format for write_image (default "png").
-            - "scale_factor" (float): image scale for write_image (default 1).
+            - `"subplots"` (dict): Subplot kwargs passed to `make_subplots`.
+            - `"plot"` (dict): Trace kwargs passed to `Scatter`.
+            - `"outliers"` (dict): Style for outlier regions passed to `highlight_outliers`.
+            - `"layout"`, `"grid"`, `"annotations"`, `"tickformat"`: Extra settings passed to `adjust_chart`.
+            - `"format"` (str): Image format for `write_image` (default `"png"`).
+            - `"scale_factor"` (float): Image scale for `write_image` (default `1`).
         file_path (str): Full path (including filename) where the image will be saved.
 
     Returns:
-        None: Charts are saved to disk at file_path.
+        `None`: Charts are saved to disk at `file_path`.
     """
     # Determine the number of subplots
     # with at least 2 subplots due to possible absence of "Target average"
@@ -84,25 +84,26 @@ def make_charts(
 def create_chart(
     n_subplots: int, config: dict[str, Any], titles: list[str]
 ) -> tuple[Figure, int, int]:
-    """Creates Plotly chart with required number of subplots.
+    """Create Plotly chart with required number of subplots.
 
     This function creates a chart with `plotly.subplots.make_subplots`.
     The grid always has 2 columns; the number of rows is derived
-    based on n_subplots. Each subplot title is derived from
-    the matching entry in titles by keeping only the part
-    after the last f" {PREFIX_COL}" delimiter.
+    based on `n_subplots`. Each subplot title is derived from
+    the matching entry in `titles` by keeping only the part
+    after the last `f" {PREFIX_COL}"` delimiter.
 
     Args:
         n_subplots (int): Total number of subplots in the subplot grid.
         config (dict[str, Any]): Plotly styling settings for subplots:
-            "horizontal_spacing" (float, default 0.1) and
-            "vertical_spacing" (float, default 0.1), passed to make_subplots.
+            `"horizontal_spacing"` (float, default `0.1`) and
+            `"vertical_spacing"` (float, default `0.1`), passed to `make_subplots`.
         titles (list[str]): Raw titles for each subplot.
 
     Returns:
-        tuple[Figure, int, int]: plotly.graph_objects.Figure instance,
-            number of columns in subplot grid (always 2),
-            number of rows in subplot grid.
+        tuple[Figure, int, int]:
+            - `plotly.graph_objects.Figure` instance.
+            - Number of columns in the subplot grid (always `2`).
+            - Number of rows in the subplot grid.
     """
     n_cols = 2  # number of columns in the subplot grid is always equal to 2
     # Determine the number of rows required for the given number of subplots
@@ -129,25 +130,26 @@ def highlight_outliers(
 ) -> Figure:
     """Highlight outliers using Plotly shapes.
 
-    If both bounds are not None, adds two rectangle shapes to the subplot
-    at index s: one spanning from data.min() to the lower bound, and one
-    from the upper bound to data.max(), each spanning the full x-range
-    (x.min() to x.max()). Nulls in x or data are skipped via Series.min()/max().
-    If either bound is None, the chart is returned unchanged.
+    If both `bounds` are not `None`, adds two rectangle shapes to the subplot
+    at index `s`: one spanning from `data.min()` to the lower bound, and one
+    from the upper bound to `data.max()`, each spanning the full x-range
+    (`x.min()` to `x.max()`). Nulls in `x` or `data` are skipped via
+    `Series.min()`/`Series.max()`. If either bound is `None`, the chart is
+    returned unchanged.
 
     Args:
-        chart (Figure): plotly.graph_objects.Figure instance.
+        chart (Figure): `plotly.graph_objects.Figure` instance.
         s (int): Subplot index.
         x (Series): x-axis data for the subplot.
         data (Series): y-axis data to size the highlighted regions in the subplot.
         bounds (tuple[float | None, float | None]): Lower and upper boundaries for y-axis.
         n_cols (int): Number of columns in the subplot grid, used to map
-            s to a (row, col) position.
+            `s` to a `(row, col)` position.
         config (dict[str, Any]): Plotly styling kwargs for `Figure.add_shape`.
 
     Returns:
-        Figure: The same Figure instance, with shapes added in place
-            if bounds were both set.
+        `Figure`: The same `Figure` instance, with shapes added in place
+            if `bounds` were both set.
     """
     # If lower and upper boundaries are not None
     if None not in bounds:
@@ -180,14 +182,14 @@ def adjust_chart(
         n_cols (int): Number of columns in the subplot grid.
         n_rows (int): Number of rows in the subplot grid.
         config (dict[str, Any]): Plotly Figure configuration parameters:
-            - "layout" (dict): May set "template" (default "plotly_white"),
-                "width" (px per column, default 700), "height" (px per row, default 240).
-            - "grid" (dict): Grid styling for x/y axes.
-            - "tickformat" (str): x-axis tick format (default "%Y-%m-%d").
-            - "annotations" (dict): Parameters used to adjust subplot title position.
+            - `"layout"` (dict): May set `"template"` (default `"plotly_white"`),
+                `"width"` (px per column, default `700`), `"height"` (px per row, default `240`).
+            - `"grid"` (dict): Grid styling for x/y axes.
+            - `"tickformat"` (str): X-axis tick format (default `"%Y-%m-%d"`).
+            - `"annotations"` (dict): Parameters used to adjust subplot title position.
 
     Returns:
-        Figure: The same Figure instance, updated in place.
+        `Figure`: The same `Figure` instance, updated in place.
     """
     layout = config.get("layout", {}).copy()
     grid_config = config.get("grid", {})
