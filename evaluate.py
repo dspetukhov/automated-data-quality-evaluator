@@ -1,4 +1,4 @@
-"""Calculates per-column descriptive statistics and detects outliers (IQR/Z-score)."""
+"""Calculate per-column descriptive statistics and detect outliers (IQR/Z-score)."""
 
 from typing import Any
 
@@ -11,31 +11,31 @@ from utility import PREFIX_COL, exception_handler
 def evaluate_data(
     data: DataFrame, config: dict[str, str | float]
 ) -> tuple[list[dict[str, Any]], list[tuple[float | None, float | None]]]:
-    """Calculates descriptive statistics and outlier counts for each column in data.
+    """Calculate descriptive statistics and outlier counts for each column in data.
 
     Skips the first column of data (assumed to be the time-interval column).
     For every other column, computes mean, standard deviation, min, max,
-    quartiles, range, IQR, and outlier percentages with evaluate_data_outliers.
+    quartiles, range, IQR, and outlier percentages with `evaluate_data_outliers`.
     Outlier percentages are relative to each column's non-null count, and
-    edge cases (all-null or empty column) resolve to None/0.0 values.
+    edge cases (all-null or empty column) resolve to `None`/`0.0` values.
 
     Args:
-        data (DataFrame): Input data as produced by preprocess.make_preprocessing.
+        data (DataFrame): Input data as produced by `preprocess.make_preprocessing`.
         config (dict[str, str | float]): Parameters for detecting outliers,
-            passed to evaluate_data_outliers:
-            - "criterion" (str): IQR or Z-score,
-            - "multiplier_iqr" (float): multiplier for IQR criterion (default 1.5).
-            - "threshold_z_score" (float): threshold for Z-score criterion (default 3.0).
+            passed to `evaluate_data_outliers`:
+            - `"criterion"` (str): `"IQR"` or `"Z-score"`.
+            - `"multiplier_iqr"` (float): Multiplier for IQR criterion (default `1.5`).
+            - `"threshold_z_score"` (float): Threshold for Z-score criterion (default `3.0`).
 
     Returns:
         tuple[list[dict[str, Any]], list[tuple[float | None, float | None]]]:
             - List of dictionaries with description of each column in data:
-                - name of the column,
-                - mean and standard deviation,
-                - range of values (None if the column is all-null or empty),
-                - Q1, Q3, and IQR (None if the column is all-null or empty),
-                - outliers percentage of non-null values according to IQR
-                  and Z-score criteria (0.0 if the column is all-null or empty).
+                - Name of the column.
+                - Mean and standard deviation.
+                - Range of values (`None` if the column is all-null or empty).
+                - Q1, Q3, and IQR (`None` if the column is all-null or empty).
+                - Outliers percentage of non-null values according to IQR
+                  and Z-score criteria (`0.0` if the column is all-null or empty).
             - List of boundaries for outliers to be highlighted on a chart,
               aligned by index with the dictionaries above.
     """
@@ -94,32 +94,32 @@ def evaluate_data_outliers(
     q3: float | None,
     config: dict[str, str | float],
 ) -> tuple[int, int, tuple[float | None, float | None]]:
-    """Counts IQR and Z-score outliers in a column and derives chart boundaries.
+    """Count IQR and Z-score outliers in a column and derive chart boundaries.
 
-    Returns (0, 0, (None, None)) if q1 or q3 is None (all-null or empty column).
-    std of None (all-null or single-value column) is treated as 0, which equates
-    Z-score outlier count to 0. Chart bounds are only populated when criterion matches;
-    otherwise they are (None, None).
+    Returns `(0, 0, (None, None))` if `q1` or `q3` is `None` (all-null or empty
+    column). `std` of `None` (all-null or single-value column) is treated as
+    `0`, which equates the Z-score outlier count to `0`. Chart bounds are only
+    populated when `criterion` matches; otherwise they are `(None, None)`.
 
     Args:
-        data (Series): polars.Series of numeric values.
+        data (Series): `polars.Series` of numeric values.
         mean (float | None): Mean of data to count Z-score outliers and boundaries.
         std (float | None): Standard deviation of data.
-        q1 (float | None): First quartile (0.25) of data.
-        q3 (float | None): Third quartile (0.75) of data.
+        q1 (float | None): First quartile (`0.25`) of data.
+        q3 (float | None): Third quartile (`0.75`) of data.
         config (dict[str, str | float]): Parameters for detecting outliers:
-            - "criterion" (str): "IQR" or "Z-score"; selects which bounds are
-              returned. Any other value yields (None, None).
-            - "multiplier_iqr" (float): multiplier for IQR criterion (default 1.5).
-            - "threshold_z_score" (float): threshold for Z-score criterion (default 3.0).
+            - `"criterion"` (str): `"IQR"` or `"Z-score"`; selects which bounds
+              are returned. Any other value yields `(None, None)`.
+            - `"multiplier_iqr"` (float): Multiplier for IQR criterion (default `1.5`).
+            - `"threshold_z_score"` (float): Threshold for Z-score criterion (default `3.0`).
 
     Returns:
         tuple[int, int, tuple[float | None, float | None]]:
             - Number of IQR outliers.
-            - Number of Z-score outliers (0 if std is 0 or None).
+            - Number of Z-score outliers (`0` if `std` is `0` or `None`).
             - (lower, upper) bounds for chart highlighting: IQR bounds if
-              criterion is "IQR", mean ± threshold_z_score*std if
-              criterion is "Z-score", else (None, None).
+              `criterion` is `"IQR"`, `mean ± threshold_z_score*std` if
+              `criterion` is `"Z-score"`, else `(None, None)`.
     """
     bounds = (None, None)
     criterion = config.get("criterion")
