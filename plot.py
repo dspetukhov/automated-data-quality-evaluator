@@ -1,4 +1,4 @@
-"""Builds Plotly charts with outlier regions highlighted, and saves them to disk."""
+"""Build Plotly charts with outlier regions highlighted, and saves them to disk."""
 
 from typing import Any
 
@@ -39,7 +39,7 @@ def make_charts(
         file_path (str): Full path (including filename) where the image will be saved.
 
     Returns:
-        `None`: Charts are saved to disk at `file_path`.
+        None: Charts are saved to disk at `file_path`.
     """
     # Determine the number of subplots
     # with at least 2 subplots due to possible absence of "Target average"
@@ -148,7 +148,7 @@ def highlight_outliers(
         config (dict[str, Any]): Plotly styling kwargs for `Figure.add_shape`.
 
     Returns:
-        `Figure`: The same `Figure` instance, with shapes added in place
+        Figure: The same `Figure` instance, with shapes added in place
             if `bounds` were both set.
     """
     # If lower and upper boundaries are not None
@@ -189,7 +189,7 @@ def adjust_chart(
             - `"annotations"` (dict): Parameters used to adjust subplot title position.
 
     Returns:
-        `Figure`: The same `Figure` instance, updated in place.
+        Figure: The same `Figure` instance, updated in place.
     """
     layout = config.get("layout", {}).copy()
     grid_config = config.get("grid", {})
