@@ -1,4 +1,4 @@
-"""Assembles the markdown report with embedded charts and tables and writes it to disk."""
+"""Assemble the markdown report with embedded charts and tables and writes it to disk."""
 
 import time
 from pathlib import Path
@@ -30,8 +30,8 @@ def make_report(
 
     Args:
         df (DataFrame): Aggregated per-time-interval data, expected to
-        contain a `TIME_INTERVAL_COL` column plus per-column stat columns
-        prefixed with `PREFIX_COL`/`PREFIX_COL_E`.
+            contain a `TIME_INTERVAL_COL` column plus per-column stat columns
+            prefixed with `PREFIX_COL`/`PREFIX_COL_E`.
         metadata (dict[str, str | None]): Dict of aggregated columns
             indicating types for numeric columns.
         config (dict[str, Any]): Configuration dictionary specifying
@@ -121,20 +121,19 @@ def get_report_variables(
 
     Args:
         config (dict[str, Any]): Configuration dictionary. Reads
-            "output", "source.file_path"/"source.query",
-            "markdown.css_style", "markdown.float_precision",
-            "outliers", and "plotly".
+            `"output"`, `"source.file_path"`/`"source.query"`,
+            `"markdown.css_style"`, `"markdown.float_precision"`,
+            `"outliers"`, and `"plotly"`.
 
     Returns:
         tuple[str, str, list[str], int, dict, dict]:
             - Directory name to store report file and charts.
             - Formatted path to the file to read or SQL query to get data.
             - Content of markdown report: a one-element list with a CSS
-              `<link>` tag if "markdown.css_style" points to an existing
+              `<link>` tag if `"markdown.css_style"` points to an existing
               file, resolved relative to the output directory; otherwise
               an empty list.
-            - Precision to format floats in markdown tables; defaults to
-              4 decimal places when "markdown.float_precision" is unset.
+            - Precision to format floats in markdown tables (default `4`).
             - Outliers detection parameters.
             - Plotly configuration for charts.
     """
@@ -170,7 +169,7 @@ def get_report_variables(
             md_content = [f"<link rel='stylesheet' href='{file_path}'>\n"]
 
     # Number of decimal places to format numbers in markdown tables
-    precision = config.get("markdown", {}).get("float_precision", 4)
+    precision = config.get("markdown", {}).get("float_precision") or 4
 
     # Outliers detection parameters
     outliers_config = config.get("outliers", {})
@@ -188,7 +187,7 @@ def collect_md_content(
     source: str,
     precision: int,
 ) -> list[str]:
-    """Collects markdown content with table-of-contents from input data.
+    """Collect markdown content with table-of-contents from input data.
 
     Args:
         data (dict[str, Any]): Raw data to construct markdown content with
@@ -251,7 +250,7 @@ def make_md_table(data: list[dict], precision: int) -> str:
     """Create a markdown table from input data.
 
     This function converts a list of dictionaries into a markdown table
-    using the tabulate library. Dict values for a specific key form
+    using the `tabulate` library. Dict values for a specific key form
     a table row. The table is returned as a string to be included
     as a part of the markdown report.
 
@@ -294,14 +293,14 @@ def make_md_table(data: list[dict], precision: int) -> str:
 def write_md_file(content: list[str], output: str, file_name: str | None) -> None:
     """Write markdown file to disk.
 
-    This function writes a markdown file to disk, adding `.md` extension if absent.
-    The name of the file is defined by file_name variable (default README.md).
+    This function writes a markdown file to disk, adding ".md" extension if absent.
+    The name of the file is defined by the `file_name` variable (default "README.md").
     The file is written to the specified output directory.
 
     Args:
         content (list[str]): List of strings with content in Markdown format.
         output (str): Output directory where the file will be saved.
-        file_name (str): The name of the file to be written.
+        file_name (str | None): The name of the file to be written.
 
     Returns:
         None: Writes the markdown file to disk.
