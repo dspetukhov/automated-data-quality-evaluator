@@ -80,10 +80,10 @@ tabulate==0.10.0
 ### Features
 
 - **Comprehensive data evaluation**: descriptive statistics to evaluate data changes over configurable time intervals,
-- **Configurable time intervals**: (e.g., 1h, 13h, 1d, 6d, 1d1h) to analyze data changes over different time scales,
+- **Configurable time intervals** (e.g., 1h, 13h, 1d, 6d, 1d1h) to analyze data changes over different time scales,
 - **Various data sources**: CSV, XLSX, Parquet, and Iceberg file formats supported as well as reading from cloud providers or PostgreSQL databases,
 - **Flexible & performant data preprocessing**: data filtering and transformation using SQL expressions powered by Polars with lazy evaluation,
-- **Outliers detection**: evaluation and visual representation of anomalous changes based on IQR or Z-score criteria,
+- **Outlier detection**: evaluation and visual representation of anomalous changes based on IQR or Z-score criteria,
 - **Professional markdown reports**: with formatted tables and customized charts embedded,
 - **Configuration in one place**: various preprocessing and reporting parameters specified in a human-readable JSON file passed as a command line argument.
 
@@ -91,14 +91,14 @@ tabulate==0.10.0
 
 | Module                         | Description                                                                                              |
 |--------------------------------|----------------------------------------------------------------------------------------------------------|
-| `main.py`                      | Entry point: loads configuration, reads, preprocesses, and evaluates data, generates report              |
-| `preprocess.py`                | Preprocesses data by applying a filter and transformations, aggregates data by date                      |
+| `main.py`                      | Entry point: loads configuration, reads and preprocesses data, generates report                          |
+| `preprocess.py`                | Preprocesses data by applying a filter and transformations, aggregates data by time interval             |
 | `evaluate.py`                  | Calculates descriptive statistics for aggregated data, detects outliers based on IQR or Z-score criteria |
 | `plot.py`                      | Generates charts with outliers highlighted                                                               |
 | `report.py`                    | Generates structured markdown reports with tables and charts embedded                                    |
 | `style.css`                    | Report and table styling                                                                                 |
 | `config.json`                  | Configuration                                                                                            |
-| `utility/__init__.py`          | Default Plotly template, utility imports                                                                 |
+| `utility/__init__.py`          | Utility imports and shared constants                                                                     |
 | `utility/setup_logging.py`     | Logging configuration                                                                                    |
 | `utility/handle_data.py`       | Reads data from file, cloud, or database into Polars LazyFrame                                           |
 | `utility/handle_exceptions.py` | Decorator to handle exceptions                                                                           |
@@ -119,6 +119,7 @@ Data evaluation configuration is defined in a single JSON file ([config.json](co
 | `time_interval`        | Time interval to aggregate data (Optional)                               |                                                                                                         |
 | `target_column`        | Column to calculate target average (Optional)                            |                                                                                                         |
 | `columns_to_exclude`   | List of columns to be excluded from evaluation (Optional)                |                                                                                                         |
+| `columns_to_exclude_extra_statistics` | List of columns to exclude from min/max/mean/median/std statistics (Optional) |                                                                                                   |
 | `outliers`             | Outlier detection settings (Optional)                                    | `criterion`, `multiplier_iqr`, `threshold_z_score`                                                      |
 | `markdown`             | Markdown report settings (Optional)                                      | `name`, `css_style`, `float_precision`                                                                  |
 | `plotly`               | Plotly styling settings (Optional)                                       | `plot`, `outliers`, `layout`, `annotations`, `grid`, `subplots`, `format`, `scale_factor`, `tickformat` |
@@ -147,7 +148,7 @@ storage_options = {
   - when a date or datetime column does not match ISO 8601 standard,
   - when a categorical string column is inferred as a numerical one.
 
-Supported types for `schema_overrides` include `String`, `Date`, and `Datetime`.
+Supported types for `schema_overrides` include `String`, `Date`, `Datetime`, and `Categorical`.
 
 More details of how `schema_overrides` can be useful when reading data can be found in the [Troubleshooting](#troubleshooting).
 
@@ -210,6 +211,10 @@ If not specified, the tool will try to use a column literally named `target_colu
 
 This optional parameter specifies a list of columns to be excluded from the evaluation process.
 
+#### `columns_to_exclude_extra_statistics`
+
+This optional parameter specifies a list of columns for which the minimum, maximum, mean, median, and standard deviation statistics will not be calculated. The number of unique values and proportion of missing values are still calculated for these columns.
+
 #### `outliers`
 
 This section specifies parameters to evaluate outliers and highlight outlier regions on charts:
@@ -232,7 +237,7 @@ This section specifies Plotly configuration parameters and styles, which can be 
 
 - `plot` defines style for [plotly.graph_objs.Scatter](https://plotly.com/python-api-reference/generated/plotly.graph_objects.Scatter.html#plotly.graph_objects.Scatter), which renders evaluated descriptive statistics over time intervals,
 - `outliers` defines style for Plotly shapes to highlight outliers,
-- `layout` defines parameters to adjust [layout](https://plotly.com/python/reference/layout/). The default chart height equals 512 pixels, default template is `plotly_white`,
+- `layout` defines parameters to adjust [layout](https://plotly.com/python/reference/layout/). The default height per subplot row is 240 pixels and the default width per subplot column is 700 pixels; default template is `plotly_white`,
 - `annotations` defines parameters to adjust [annotations](https://plotly.com/python/reference/layout/annotations/), used to modify font in subplot titles.
 - `grid` defines style for grid lines,
 - `subplots` defines extra parameters to adjust spacing in the [subplot grid](https://plotly.com/python-api-reference/generated/plotly.subplots.make_subplots.html),
@@ -286,7 +291,7 @@ This tool was tested using publicly available datasets. Full configurations for 
 
 ### [Kaggle](https://www.kaggle.com/datasets?search=fraud&sort=votes&tags=13302-Classification&minUsabilityRating=9.00+or+higher)
 
-- [Metaverse Financial Transactions Dataset](https://www.kaggle.com/datasets/faizaniftikharjanjua/metaverse-financial-transactions-dataset)
+- [Metaverse Financial Transactions Dataset](https://www.kaggle.com/datasets/faizaniftikharjanjua/metaverse-financial-transactions-dataset) | [Full example](examples/metaverse-financial-transactions-dataset.json)
 
 ```json
     "source": {
@@ -302,7 +307,7 @@ This tool was tested using publicly available datasets. Full configurations for 
     "date_column": "timestamp",
 ```
 
-- [Credit Card Fraud Prediction](https://www.kaggle.com/datasets/kelvinkelue/credit-card-fraud-prediction)
+- [Credit Card Fraud Prediction](https://www.kaggle.com/datasets/kelvinkelue/credit-card-fraud-prediction) | [Full example](examples/credit-card-fraud-prediction.json)
 
 ```json
     "source": {
@@ -319,7 +324,7 @@ This tool was tested using publicly available datasets. Full configurations for 
     "columns_to_exclude": ["", "unix_time"],
 ```
 
-- [Is this a bad transaction?](https://www.kaggle.com/datasets/podsyp/fraud-transactions-detection)
+- [Is this a bad transaction?](https://www.kaggle.com/datasets/podsyp/fraud-transactions-detection) | [Full example](examples/fraud-transactions-detection.json)
 
 ```json
     "source": {
@@ -330,7 +335,7 @@ This tool was tested using publicly available datasets. Full configurations for 
     "target_column": "bad_flag",
 ```
 
-- [Ecommerce Counterfeit Products Dataset](https://www.kaggle.com/datasets/aimlveera/counterfeit-product-detection-dataset)
+- [Ecommerce Counterfeit Products Dataset](https://www.kaggle.com/datasets/aimlveera/counterfeit-product-detection-dataset) | [Full example](examples/counterfeit-product-detection-dataset.json)
 
 ```json
     "source": {
@@ -356,7 +361,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     },
 ```
 
-- [Financial Transactions Dataset for Fraud Detection](https://www.kaggle.com/datasets/aryan208/financial-transactions-dataset-for-fraud-detection)
+- [Financial Transactions Dataset for Fraud Detection](https://www.kaggle.com/datasets/aryan208/financial-transactions-dataset-for-fraud-detection) | [Full example](examples/financial-transactions-dataset-for-fraud-detection.json)
 
 ```json
     "source": {
@@ -371,7 +376,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     "target_column": "is_fraud",
 ```
 
-- [IBM Transactions for Anti Money Laundering](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml)
+- [IBM Transactions for Anti Money Laundering](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml) | [Full example](examples/ibm-transactions-for-anti-money-laundering-aml.json)
 
 ```json
     "source": {
@@ -410,7 +415,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
 
 ### [Hugging Face](https://huggingface.co/datasets?size_categories=or:%28size_categories:10K%3Cn%3C100K,size_categories:100K%3Cn%3C1M,size_categories:1M%3Cn%3C10M,size_categories:10M%3Cn%3C100M,size_categories:100M%3Cn%3C1B,size_categories:1B%3Cn%3C10B,size_categories:10B%3Cn%3C100B,size_categories:100B%3Cn%3C1T,size_categories:n%3E1T%29&sort=trending&search=fraud)
 
-- [CiferAI/Cifer-Fraud-Detection-Dataset-AF](https://huggingface.co/datasets/CiferAI/Cifer-Fraud-Detection-Dataset-AF)
+- [CiferAI/Cifer-Fraud-Detection-Dataset-AF](https://huggingface.co/datasets/CiferAI/Cifer-Fraud-Detection-Dataset-AF) | [Full example](examples/cifer-fraud-detection-dataset.json)
 
 ```json
     "source": {
@@ -433,7 +438,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
 
 **Note:** The specified `transformations` convert integer type column `step`, which is a unit of time (1 step = 1 hour), into a date type column with values starting from 1970-01-01.
 
-- [Tichies/card-fraud](https://huggingface.co/datasets/Tichies/card-fraud)
+- [Tichies/card-fraud](https://huggingface.co/datasets/Tichies/card-fraud) | [Full example](examples/card-fraud.json)
 
 ```json
     "source": {
@@ -451,7 +456,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     "columns_to_exclude": ["Transaction_ID"],
 ```
 
-- [saifhmb/FraudPaymentData](https://huggingface.co/datasets/saifhmb/FraudPaymentData)
+- [saifhmb/FraudPaymentData](https://huggingface.co/datasets/saifhmb/FraudPaymentData) | [Full example](examples/FraudPaymentData.json)
 
 ```json
     "source": {
@@ -466,7 +471,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
 
 **Note:** Downloaded by `ds = load_dataset("saifhmb/FraudPaymentData")`, then saved `ds["train"].to_parquet("FraudPaymentData.parquet")`.
 
-- [Ransaka/fraud_prediction_300K](https://huggingface.co/datasets/Ransaka/fraud_prediction_300K)
+- [Ransaka/fraud_prediction_300K](https://huggingface.co/datasets/Ransaka/fraud_prediction_300K) | [Full example](examples/fraud_prediction_300K.json)
 
 ```json
     "source": {
@@ -478,7 +483,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     "columns_to_exclude": ["customer_ID"],
 ```
 
-- [Phoenix21/mock_fraud-detection-dataset](https://huggingface.co/datasets/Phoenix21/mock_fraud-detection-dataset)
+- [Phoenix21/mock_fraud-detection-dataset](https://huggingface.co/datasets/Phoenix21/mock_fraud-detection-dataset) | [Full example](examples/mock_fraud-detection-dataset.json)
 
 ```json
     "source": {
@@ -493,7 +498,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     "columns_to_exclude": ["transaction_id"],
 ```
 
-- [Nooha/cc_fraud_detection_dataset](https://huggingface.co/datasets/Nooha/cc_fraud_detection_dataset)
+- [Nooha/cc_fraud_detection_dataset](https://huggingface.co/datasets/Nooha/cc_fraud_detection_dataset) | [Full example](examples/cc_fraud_detection_dataset.json)
 
 ```json
     "source": {
@@ -509,35 +514,5 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
 ```
 
 **Note:** Downloaded by `ds = load_dataset("Nooha/cc_fraud_detection_dataset")`, then saved `ds["train"].to_parquet("cc_fraud_detection_dataset.parquet")`.
-
-- [electricsheepafrica/Nigerian-Financial-Transactions-and-Fraud-Detection-Dataset](https://huggingface.co/datasets/electricsheepafrica/Nigerian-Financial-Transactions-and-Fraud-Detection-Dataset)
-
-```json
-    "source": {
-        "file_path": "hf://datasets/electricsheepafrica/Nigerian-Financial-Transactions-and-Fraud-Detection-Dataset/V2-nigerian-financial-transactions-and-fraud-detection-dataset-for-model-training.csv",
-        "schema_overrides": {
-            "timestamp": "Datetime",
-            "sender_account": "Categorical",
-            "receiver_account": "Categorical",
-            "transaction_type": "Categorical",
-            "merchant_category": "Categorical",
-            "location": "Categorical",
-            "device_used": "Categorical",
-            "fraud_type": "Categorical",
-            "payment_channel": "Categorical",
-            "ip_address": "Categorical",
-            "device_hash": "Categorical",
-            "sender_persona": "Categorical",
-            "user_top_category": "Categorical",
-            "ip_geo_region": "Categorical"
-        }
-    },
-    "output": "nigerian-financial-transactions",
-    "engine": "streaming",
-    "filter": "select * from self where timestamp < '2024-01-01'",
-    "date_column": "timestamp",
-    "target_column": "is_fraud",
-    "columns_to_exclude": ["transaction_id"],
-```
 
 [Back to table of contents](#table-of-contents)
