@@ -146,7 +146,7 @@ def get_report_variables(
         else "postgresql",
     )
     # Create output directory
-    Path(output_dir).mkdir(exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Determine and format source of data for markdown report
     if config["source"].get("file_path"):
