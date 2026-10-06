@@ -581,11 +581,11 @@ class TestMakePreprocessing:
         assert df.height == 2
         assert df[TIME_INTERVAL_COL].to_list() == [None, datetime(2024, 1, 1)]
 
-    def test_column_named_target_column_not_target_by_default(self):
-        # "target_column" absent from config: no target, even if a column has that name.
+    def test_column_named_target_column_is_target_by_default(self):
+        # "target_column" absent from config: defaults to a column of that name.
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "target_column": [0, 1]})
         df, _ = make_preprocessing(lf, {"date_column": "d"})
-        assert " __Target average" not in df.columns
+        assert df[" __Target average"].to_list() == [0.5]
 
     def test_string_target_column_skipped(self):
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "t": ["a", "b"]})
