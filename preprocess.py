@@ -18,11 +18,11 @@ from utility import (
 def make_preprocessing(
     lf: pl.LazyFrame, config: dict[str, Any]
 ) -> tuple[pl.DataFrame, dict[str, str | None]]:
-    """Preprocess data for evaluation through aggregation by dates.
+    """Preprocess data for evaluation through aggregation by time interval.
 
     Applies the configured filter and transformations, validates and divides
     `date_column` into time intervals, collects per-column aggregation
-    expressions, and eagerly aggregates the LazyFrame by time interval.
+    expressions, and aggregates the LazyFrame by time interval.
 
     Args:
         lf (pl.LazyFrame): Input data.
@@ -68,7 +68,7 @@ def make_preprocessing(
         logging.warning("Target column not found")
 
     # Collect aggregation expressions for each column except excluded ones
-    aggs, metadata = collect_aggregations(
+    aggs, aggs_extra, with_columns_extra, metadata = collect_aggregations(
         schema,
         target_column,
         config.get("columns_to_exclude", []),
@@ -80,10 +80,23 @@ def make_preprocessing(
         pl.Config.set_streaming_chunk_size(config["streaming_chunk_size"])
 
     # Aggregate data by time intervals
-    lf_agg = lf.group_by(TIME_INTERVAL_COL).agg(aggs).sort(TIME_INTERVAL_COL)
+    lf_all = [lf.group_by(TIME_INTERVAL_COL).agg(aggs)]
+    if aggs_extra:
+        lf_all.append(
+            lf.with_columns(with_columns_extra)
+            .group_by(TIME_INTERVAL_COL)
+            .agg(aggs_extra)
+        )
+
     # lf_agg.explain()  # uncomment to get the query plan or turn off/on optimizations
-    lf_agg = lf_agg.collect(engine=config.get("engine", "auto"))
-    return lf_agg, metadata
+    df_all = pl.collect_all(lf_all, engine=config.get("engine", "auto"))
+    if len(df_all) == 1:
+        df = df_all[0]
+    else:
+        df_agg, df_agg_extra = df_all
+        df = df_agg.join(df_agg_extra, on=TIME_INTERVAL_COL, how="inner")
+
+    return df.sort(TIME_INTERVAL_COL), metadata
 
 
 def apply_filter(lf: pl.LazyFrame, filter_str: str | None) -> pl.LazyFrame:
@@ -189,19 +202,20 @@ def collect_aggregations(
     target_column: str | None,
     columns_to_exclude: list[str],
     columns_to_exclude_extra_statistics: list[str],
-) -> tuple[list[pl.Expr], dict[str, str | None]]:
+) -> tuple[list[pl.Expr], list[pl.Expr], list[pl.Expr], dict[str, str | None]]:
     """Collect per-time-interval aggregation expressions for each column.
 
     Always includes an expression for the row count per interval, and, if
     `target_column` is set, its mean. For every remaining column (excluding
     `TIME_INTERVAL_COL` and `columns_to_exclude`), adds `"Number of unique
-    values"` (`n_unique()` of non-null values, computed via `drop_nulls()` so
-    nulls are not counted as a distinct value) and `"Proportion of missing values"`
-    (mean of `is_null()`). Unless the column is in
-    `columns_to_exclude_extra_statistics`, also adds `min`/`max`/`mean`/`median`/`std`;
-    for non-numeric columns these are computed on string length
-    (cast to `String` then `str.len_chars()`) rather than on the values
-    themselves.
+    values"` (`approx_n_unique()` of non-null values, computed via `drop_nulls()`
+    so nulls are not counted as a distinct value) and `"Proportion of missing values"`
+    (mean of `is_null()`). Unless the column is in `columns_to_exclude_extra_statistics`,
+    also adds `min`/`max`/`mean`/`median`/`std`; for non-numeric columns
+    these are computed on length of string representations (`len_chars()`
+    for string and categorical values) rather than on the values themselves.
+
+    the number of characters of the string representation of each value
 
     Args:
         schema (pl.Schema): Schema of LazyFrame to be aggregated.
@@ -212,20 +226,26 @@ def collect_aggregations(
             `min`/`max`/`mean`/`median`/`std` statistics will not be calculated.
 
     Returns:
-        tuple[list[pl.Expr], dict[str, str | None]]:
-            - aggs: Aggregation expressions for `LazyFrame.agg()`.
+        tuple[list[pl.Expr], list[pl.Expr], list[pl.Expr], dict[str, str | None]]:
+            - aggs: Aggregation expressions with common statistics.
+            - aggs_extra: Aggregation expressions with extra statistics.
+            - with_columns: Transformation expressions for `String` and `Categorical` columns in LazyFrame.
             - metadata: Maps each processed column to its dtype as a string,
               or `None` if the column is in `columns_to_exclude_extra_statistics`.
     """
     # Start with common aggregation expression for the number of values
     aggs = [pl.len().alias(" __Number of values")]
+    aggs_extra = []
+    with_columns = []
+    metadata = {}
 
     # If target column is found in schema,
     # calculate its mean (i.e. class balance in binary classification problems)
     if target_column:
         aggs.append(pl.col(target_column).mean().alias(" __Target average"))
 
-    metadata = {}
+    string_cols = cs.expand_selector(schema, cs.string())
+    categorical_cols = cs.expand_selector(schema, cs.categorical())
 
     for col in schema.names():
         if col == TIME_INTERVAL_COL or col in columns_to_exclude:
@@ -235,7 +255,7 @@ def collect_aggregations(
             [
                 pl.col(col)
                 .drop_nulls()
-                .n_unique()
+                .approx_n_unique()
                 .alias(f"{PREFIX_COL} {col} __Number of unique values"),
                 pl.col(col)
                 .is_null()
@@ -247,19 +267,23 @@ def collect_aggregations(
         if col in columns_to_exclude_extra_statistics:
             metadata[col] = None
         else:
-            col_expr = pl.col(col)
+            if col in string_cols:
+                with_columns.append(pl.col(col).str.len_chars())
+            elif col in categorical_cols:
+                with_columns.append(pl.col(col).cat.len_chars())
+
             # Add extra statistics
-            if col not in cs.expand_selector(schema, cs.numeric()):
-                col_expr = col_expr.cast(pl.String).str.len_chars()
-            aggs.extend(
+            aggs_extra.extend(
                 [
-                    col_expr.min().alias(f"{PREFIX_COL_E} {col} __Min"),
-                    col_expr.max().alias(f"{PREFIX_COL_E} {col} __Max"),
-                    col_expr.mean().alias(f"{PREFIX_COL_E} {col} __Mean"),
-                    col_expr.median().alias(f"{PREFIX_COL_E} {col} __Median"),
-                    col_expr.std().alias(f"{PREFIX_COL_E} {col} __Standard deviation"),
+                    pl.col(col).min().alias(f"{PREFIX_COL_E} {col} __Min"),
+                    pl.col(col).max().alias(f"{PREFIX_COL_E} {col} __Max"),
+                    pl.col(col).mean().alias(f"{PREFIX_COL_E} {col} __Mean"),
+                    pl.col(col).median().alias(f"{PREFIX_COL_E} {col} __Median"),
+                    pl.col(col)
+                    .std()
+                    .alias(f"{PREFIX_COL_E} {col} __Standard deviation"),
                 ]
             )
             metadata[col] = str(schema[col])
 
-    return aggs, metadata
+    return aggs, aggs_extra, with_columns, metadata
