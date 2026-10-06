@@ -152,7 +152,7 @@ def handle_schema_overrides(
     Unknown type strings are skipped with a warning. Non-`dict`, non-`None`
     input logs a warning and returns `None`. Supported type names
     (case-sensitive, matched exactly): `"String"`, `"Date"`, `"Datetime"`,
-    `"Categorical"`.
+    `"Categorical"`, `"Float32"`, `"Int8"`.
 
     Args:
         data (dict[str, str] | None): Mapping of column name to type-name
@@ -167,6 +167,8 @@ def handle_schema_overrides(
         "Date": pl.Date,
         "Datetime": pl.Datetime,
         "Categorical": pl.Categorical,
+        "Float32": pl.Float32,
+        "Int8": pl.Int8,
     }
 
     if isinstance(data, dict):
@@ -177,9 +179,9 @@ def handle_schema_overrides(
             else:
                 logging.warning(f"Unsupported data type '{value}' for column '{key}'")
         return output
-    else:
+    if data is not None:
         logging.warning(f"'schema_overrides' expected dict, got {type(data).__name__}")
-        return None
+    return None
 
 
 def handle_environment_variables(

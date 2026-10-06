@@ -148,7 +148,7 @@ storage_options = {
   - when a date or datetime column does not match ISO 8601 standard,
   - when a categorical string column is inferred as a numerical one.
 
-Supported types for `schema_overrides` include `String`, `Date`, `Datetime`, and `Categorical`.
+Supported types for `schema_overrides` include `String`, `Date`, `Datetime`, `Categorical`, `Float32`, and `Int8`.
 
 More details of how `schema_overrides` can be useful when reading data can be found in the [Troubleshooting](#troubleshooting).
 
@@ -300,7 +300,7 @@ This tool was tested using publicly available datasets. Full configurations for 
             "timestamp": "Datetime"
         }
     },
-    "output": "metaverse-financial-transactions-dataset",
+    "output": "reports/metaverse-financial-transactions",
     "transformations": {
         "target_column": "(anomaly = 'high_risk')::int"
     },
@@ -318,7 +318,7 @@ This tool was tested using publicly available datasets. Full configurations for 
             "zip": "String"
         }
     },
-    "output": "credit-card-fraud-prediction",
+    "output": "reports/credit-card-fraud-prediction",
     "date_column": "trans_date_trans_time",
     "target_column": "is_fraud",
     "columns_to_exclude": ["", "unix_time"],
@@ -330,7 +330,7 @@ This tool was tested using publicly available datasets. Full configurations for 
     "source": {
         "file_path": "/datasets/fraud.csv"
     },
-    "output": "fraud-transactions-detection",
+    "output": "reports/fraud-transactions-detection",
     "date_column": "rep_loan_date",
     "target_column": "bad_flag",
 ```
@@ -341,9 +341,10 @@ This tool was tested using publicly available datasets. Full configurations for 
     "source": {
         "file_path": "/datasets/_counterfeit_transactions.csv"
     },
-    "output": "counterfeit-product-detection-dataset",
+    "output": "reports/counterfeit-product-detection",
     "date_column": "transaction_date",
     "target_column": "involves_counterfeit",
+    "columns_to_exclude": ["transaction_id"],
     "transformations": {
         "transaction_date": "DATE(transaction_date, '%Y-%m-%d %H:%M:%S')",
         "involves_counterfeit": "involves_counterfeit::int"
@@ -370,10 +371,11 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
             "timestamp": "Datetime"
         }
     },
-    "output": "financial-transactions-dataset-for-fraud-detection",
+    "output": "reports/financial-transactions-for-fraud-detection",
     "filter": "select * from self where timestamp::date > '2023-01-01' and timestamp::date < '2024-01-01'",
     "date_column": "timestamp",
     "target_column": "is_fraud",
+    "columns_to_exclude": ["transaction_id"],
 ```
 
 - [IBM Transactions for Anti Money Laundering](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml) | [Full example](examples/ibm-transactions-for-anti-money-laundering-aml.json)
@@ -384,15 +386,18 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
         "schema_overrides": {
             "Timestamp": "Datetime",
             "From Bank": "Categorical",
-            "Account": "Categorical",
             "To Bank": "Categorical",
-            "Account_duplicated_0": "Categorical",
-            "Receiving Currency": "Categorical",
+            "Account": "String",
+            "Account_duplicated_0": "String",
+            "Payment Format": "Categorical",
             "Payment Currency": "Categorical",
-            "Payment Format": "Categorical"
+            "Receiving Currency": "Categorical",
+            "Amount Paid": "Float32",
+            "Amount Received": "Float32",
+            "Is Laundering": "Int8"
         }
     },
-    "output": "ibm-transactions-for-anti-money-laundering",
+    "output": "reports/ibm-transactions-for-anti-money-laundering",
     "engine": "streaming",
     "streaming_chunk_size": 2026,
     "date_column": "Timestamp",
@@ -408,8 +413,8 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
 
 - Extracted by `unzip ibm-transactions-for-anti-money-laundering-aml.zip LI-Large_Trans.csv`,
 - CSV file weighs 16GB and has 176M rows,
-- `schema_overrides` specifications convert string columns to categorical to reduce memory usage during aggregation,
-- `engine` and `streaming_chunk_size` values ensure processing on a machine with small RAM; specified values allow processing on a laptop with 8GB RAM (any value of `streaming_chunk_size` below 50000 worked).
+- `schema_overrides` specifies columns of a specific type to reduce memory consumption during aggregation,
+- `engine` and `streaming_chunk_size` values enable processing on a machine with small RAM.
 
 [Back to table of contents](#table-of-contents)
 
@@ -426,7 +431,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
             "nameDest": "Categorical"
         }
     },
-    "output": "cifer-fraud-detection-dataset",
+    "output": "reports/cifer-fraud-detection",
     "engine": "streaming",
     "filter": "select * from self where step > 1 and step < 743",
     "transformations": {
@@ -445,12 +450,14 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
         "file_path": "hf://datasets/Tichies/card-fraud/saske.csv",
         "schema_overrides": {
             "Transaction_Date": "Datetime",
-            "User_ID": "String",
-            "Device_ID": "String",
-            "Merchant_ID": "String"
+            "Card_Type": "Categorical",
+            "Transaction_Currency": "Categorical",
+            "Transaction_Status": "Categorical",
+            "Transaction_Category": "Categorical"
         }
     },
-    "output": "hf-card-fraud",
+    "output": "reports/card-fraud",
+    "filter": "select * from self where Transaction_Date::date < '2024-03-10'",
     "date_column": "Transaction_Date",
     "target_column": "isFraud",
     "columns_to_exclude": ["Transaction_ID"],
@@ -462,11 +469,13 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     "source": {
         "file_path": "/datasets/FraudPaymentData.parquet"
     },
+    "output": "reports/fraud-payment",
     "date_column": "Time_step",
     "target_column": "Label",
     "transformations": {
         "Time_step": "DATE(Time_step, '%m/%d/%Y %H:%M')"
     },
+    "columns_to_exclude": ["Transaction_Id"],
 ```
 
 **Note:** Downloaded by `ds = load_dataset("saifhmb/FraudPaymentData")`, then saved `ds["train"].to_parquet("FraudPaymentData.parquet")`.
@@ -477,7 +486,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     "source": {
         "file_path": "hf://datasets/Ransaka/fraud_prediction_300K/data_50K.parquet"
     },
-    "output": "fraud-prediction-300K",
+    "output": "reports/fraud-prediction-300K",
     "date_column": "S_2",
     "target_column": "target",
     "columns_to_exclude": ["customer_ID"],
@@ -492,7 +501,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
             "timestamp": "Datetime"
         }
     },
-    "output": "mock-fraud-detection-dataset",
+    "output": "reports/mock-fraud-detection",
     "date_column": "timestamp",
     "target_column": "is_fraud",
     "columns_to_exclude": ["transaction_id"],
@@ -504,7 +513,7 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
     "source": {
         "file_path": "/datasets/cc_fraud_detection_dataset.parquet"
     },
-    "output": "hf-cc-fraud_detection_dataset",
+    "output": "reports/cc-fraud-detection",
     "date_column": "trans_date",
     "target_column": "is_fraud",
     "transformations": {
