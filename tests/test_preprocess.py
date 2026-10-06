@@ -126,14 +126,63 @@ class TestProcessDateColumn:
         ]
 
     def test_non_string_non_date_column_raises_system_exit(self):
-        # FIXED: date_column with an unsupported dtype (e.g. plain Int64) now
-        # raises SystemExit immediately, instead of deferring to a confusing
-        # generic Polars error at .collect() time.
+        # date_column with an unsupported dtype (e.g. plain Int64) raises
+        # SystemExit immediately rather than a Polars error at .collect() time.
         lf = pl.LazyFrame({"d": [1, 2, 3]})
         schema = lf.collect_schema()
         with pytest.raises(SystemExit) as exc:
             process_date_column(lf, schema, "d", "1d")
         assert "not supported" in str(exc.value)
+
+    def test_returned_schema_matches_returned_lazyframe(self):
+        lf = pl.LazyFrame({"d": [date(2024, 1, 1)], "v": [1]})
+        new_lf, new_schema = process_date_column(lf, lf.collect_schema(), "d", "1d")
+        assert new_schema == new_lf.collect_schema()
+        assert new_schema.names() == [TIME_INTERVAL_COL, "v"]
+        assert new_schema[TIME_INTERVAL_COL] == pl.Date
+
+    def test_date_dtype_unsupported_boolean_raises_system_exit(self):
+        lf = pl.LazyFrame({"d": [True, False]})
+        with pytest.raises(SystemExit) as exc:
+            process_date_column(lf, lf.collect_schema(), "d", "1d")
+        assert "not supported" in str(exc.value)
+
+    def test_string_with_time_component_fails_lazily_at_collect(self):
+        # NOTE (suspected limitation, not fixed): String columns are parsed with
+        # `str.to_date(strict=True)`, so datetime-formatted strings are NOT supported.
+        # The error is not raised by process_date_column but deferred to .collect().
+        lf = pl.LazyFrame({"d": ["2024-01-01 10:00:00"]})
+        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1d")
+        with pytest.raises(pl.exceptions.ComputeError):
+            new_lf.collect()
+
+    def test_invalid_time_interval_fails_lazily_at_collect(self):
+        # NOTE: time_interval is not validated up front; an invalid string only
+        # fails at .collect() time with a Polars error (not a SystemExit).
+        lf = pl.LazyFrame({"d": [date(2024, 1, 1)]})
+        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "xyz")
+        with pytest.raises(pl.exceptions.InvalidOperationError):
+            new_lf.collect()
+
+    def test_sub_day_interval_on_date_column_is_silent_noop(self):
+        # NOTE (suspected bug, not fixed): "1h" on a Date column silently leaves
+        # dates unchanged rather than warning that the interval is too fine.
+        lf = pl.LazyFrame({"d": ["2024-01-01", "2024-01-02"]})
+        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1h")
+        assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [
+            date(2024, 1, 1), date(2024, 1, 2)
+        ]
+
+    def test_weekly_interval_truncates_to_monday(self):
+        lf = pl.LazyFrame({"d": [date(2024, 1, 3), date(2024, 1, 7)]})  # Wed, Sun
+        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1w")
+        assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [date(2024, 1, 1)] * 2
+
+    def test_other_columns_preserved(self):
+        lf = pl.LazyFrame({"d": [date(2024, 1, 1)], "v": [5]})
+        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1d")
+        assert new_lf.collect()["v"].to_list() == [5]
+
 
 
 # ---------------------------------------------------------------------------
@@ -142,14 +191,38 @@ class TestProcessDateColumn:
 
 
 class TestCollectAggregations:
-    def _agg(self, lf, aggs):
-        return lf.group_by(TIME_INTERVAL_COL).agg(aggs).sort(TIME_INTERVAL_COL).collect()
+    @staticmethod
+    def _run(lf, result):
+        """Mimic make_preprocessing: aggregate `aggs`, and `aggs_extra` after `with_columns`."""
+        aggs, aggs_extra, with_columns, _ = result
+        df = lf.group_by(TIME_INTERVAL_COL).agg(aggs).sort(TIME_INTERVAL_COL).collect()
+        if aggs_extra:
+            extra = (
+                lf.with_columns(with_columns)
+                .group_by(TIME_INTERVAL_COL)
+                .agg(aggs_extra)
+                .sort(TIME_INTERVAL_COL)
+                .collect()
+            )
+            df = df.join(extra, on=TIME_INTERVAL_COL, how="inner")
+        return df
+
+    def test_returns_four_tuple(self):
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)], "a": [1]})
+        result = collect_aggregations(lf.collect_schema(), None, [], [])
+        assert isinstance(result, tuple) and len(result) == 4
+        aggs, aggs_extra, with_columns, metadata = result
+        # " __Number of values" + (n_unique, null rate) for "a"
+        assert len(aggs) == 3
+        # min/max/mean/median/std for "a"
+        assert len(aggs_extra) == 5
+        assert with_columns == []
+        assert metadata == {"a": "Int64"}
 
     def test_basic_number_of_values_column(self):
         lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 3, "a": [1, 2, 3]})
-        schema = lf.collect_schema()
-        aggs, metadata = collect_aggregations(schema, None, [], [])
-        df = self._agg(lf, aggs)
+        result = collect_aggregations(lf.collect_schema(), None, [], [])
+        df = self._run(lf, result)
         assert df[" __Number of values"].to_list() == [3]
 
     def test_target_column_adds_mean_expr(self):
@@ -158,10 +231,14 @@ class TestCollectAggregations:
             "a": [1, 2],
             "target": [0, 1],
         })
-        schema = lf.collect_schema()
-        aggs, metadata = collect_aggregations(schema, "target", [], [])
-        df = self._agg(lf, aggs)
+        result = collect_aggregations(lf.collect_schema(), "target", [], [])
+        df = self._run(lf, result)
         assert df[" __Target average"].to_list() == [0.5]
+
+    def test_no_target_column_no_target_average_expr(self):
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "a": [1, 2]})
+        df = self._run(lf, collect_aggregations(lf.collect_schema(), None, [], []))
+        assert " __Target average" not in df.columns
 
     def test_excluded_column_not_in_metadata_or_aggs(self):
         lf = pl.LazyFrame({
@@ -169,17 +246,31 @@ class TestCollectAggregations:
             "a": [1, 2],
             "skip_me": [10, 20],
         })
-        schema = lf.collect_schema()
-        aggs, metadata = collect_aggregations(schema, None, ["skip_me"], [])
-        assert "skip_me" not in metadata
-        assert "a" in metadata
-        df = self._agg(lf, aggs)
+        result = collect_aggregations(lf.collect_schema(), None, ["skip_me"], [])
+        assert "skip_me" not in result[3]
+        assert "a" in result[3]
+        df = self._run(lf, result)
         assert not any("skip_me" in c for c in df.columns)
+
+    def test_excluded_target_column_still_gets_target_average(self):
+        # NOTE (suspected inconsistency, not fixed): a target column listed in
+        # `columns_to_exclude` is skipped in the per-column loop, but its
+        # " __Target average" is still computed because that expression is added
+        # before the exclusion check.
+        lf = pl.LazyFrame({
+            TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
+            "a": [1, 2],
+            "target": [0, 1],
+        })
+        result = collect_aggregations(lf.collect_schema(), "target", ["target"], [])
+        assert "target" not in result[3]
+        df = self._run(lf, result)
+        assert df[" __Target average"].to_list() == [0.5]
+        assert not any("target __" in c for c in df.columns)
 
     def test_time_interval_col_excluded_from_metadata(self):
         lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "a": [1, 2]})
-        schema = lf.collect_schema()
-        _, metadata = collect_aggregations(schema, None, [], [])
+        _, _, _, metadata = collect_aggregations(lf.collect_schema(), None, [], [])
         assert TIME_INTERVAL_COL not in metadata
 
     def test_numeric_column_metadata_and_stats(self):
@@ -188,51 +279,97 @@ class TestCollectAggregations:
             "a": [1, 2, None],
         })
         schema = lf.collect_schema()
-        aggs, metadata = collect_aggregations(schema, None, [], [])
-        assert metadata["a"] == str(schema["a"])
-        df = self._agg(lf, aggs)
-        # FIXED: n_unique() is now computed on drop_nulls(), so null values
-        # are excluded from the unique count (tracked separately via
-        # "Proportion of missing values").
+        result = collect_aggregations(schema, None, [], [])
+        assert result[3]["a"] == str(schema["a"])
+        df = self._run(lf, result)
+        # n_unique is computed on drop_nulls(): nulls are not a distinct value
         assert df[f"{PREFIX_COL} a __Number of unique values"].to_list() == [2]
-        assert df[f"{PREFIX_COL} a __Proportion of missing values"].to_list() == [pytest.approx(1 / 3)]
+        assert df[f"{PREFIX_COL} a __Proportion of missing values"].to_list() == [
+            pytest.approx(1 / 3)
+        ]
         assert df[f"{PREFIX_COL_E} a __Min"].to_list() == [1]
         assert df[f"{PREFIX_COL_E} a __Max"].to_list() == [2]
         assert df[f"{PREFIX_COL_E} a __Mean"].to_list() == [1.5]
+        assert df[f"{PREFIX_COL_E} a __Median"].to_list() == [1.5]
+        assert df[f"{PREFIX_COL_E} a __Standard deviation"].to_list() == [
+            pytest.approx(0.7071067811865476)
+        ]
 
-    def test_non_numeric_column_uses_string_length(self):
+    def test_string_column_uses_char_length_via_with_columns(self):
         lf = pl.LazyFrame({
             TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
             "s": ["ab", "abcd"],
         })
-        schema = lf.collect_schema()
-        aggs, metadata = collect_aggregations(schema, None, [], [])
-        df = self._agg(lf, aggs)
+        result = collect_aggregations(lf.collect_schema(), None, [], [])
+        assert len(result[2]) == 1  # one len_chars expression for "s"
+        assert result[3]["s"] == "String"
+        df = self._run(lf, result)
         # Min/Max/Mean computed on string LENGTH, not lexical value
         assert df[f"{PREFIX_COL_E} s __Min"].to_list() == [2]
         assert df[f"{PREFIX_COL_E} s __Max"].to_list() == [4]
         assert df[f"{PREFIX_COL_E} s __Mean"].to_list() == [3]
+        # Common stats are computed on the original (non-length) values
+        assert df[f"{PREFIX_COL} s __Number of unique values"].to_list() == [2]
 
-    def test_columns_to_exclude_extra_statistics_sets_metadata_none(self):
+    def test_categorical_column_uses_char_length(self):
         lf = pl.LazyFrame({
             TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
-            "a": [1, 2],
+            "c": pl.Series(["x", "yyy"], dtype=pl.Categorical),
         })
-        schema = lf.collect_schema()
-        aggs, metadata = collect_aggregations(schema, None, [], ["a"])
+        result = collect_aggregations(lf.collect_schema(), None, [], [])
+        assert len(result[2]) == 1
+        assert result[3]["c"] == "Categorical"
+        df = self._run(lf, result)
+        assert df[f"{PREFIX_COL_E} c __Min"].to_list() == [1]
+        assert df[f"{PREFIX_COL_E} c __Max"].to_list() == [3]
+
+    def test_boolean_column_stats_not_length_based(self):
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "b": [True, False]})
+        result = collect_aggregations(lf.collect_schema(), None, [], [])
+        assert result[2] == []
+        df = self._run(lf, result)
+        assert df[f"{PREFIX_COL_E} b __Mean"].to_list() == [0.5]
+
+    def test_columns_to_exclude_extra_statistics_sets_metadata_none(self):
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "a": [1, 2]})
+        result = collect_aggregations(lf.collect_schema(), None, [], ["a"])
+        aggs, aggs_extra, with_columns, metadata = result
         assert metadata["a"] is None
-        df = self._agg(lf, aggs)
-        # Extra stat columns must not exist for excluded column
+        assert aggs_extra == []
+        df = self._run(lf, result)
         assert f"{PREFIX_COL_E} a __Min" not in df.columns
         # But common stats (n_unique, null rate) still present
         assert f"{PREFIX_COL} a __Number of unique values" in df.columns
+        assert f"{PREFIX_COL} a __Proportion of missing values" in df.columns
 
-    def test_no_target_column_no_target_average_expr(self):
-        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "a": [1, 2]})
-        schema = lf.collect_schema()
-        aggs, _ = collect_aggregations(schema, None, [], [])
-        df = self._agg(lf, aggs)
-        assert " __Target average" not in df.columns
+    def test_extra_statistics_excluded_string_has_no_len_expression(self):
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)], "s": ["ab"]})
+        _, aggs_extra, with_columns, metadata = collect_aggregations(
+            lf.collect_schema(), None, [], ["s"]
+        )
+        assert with_columns == []
+        assert aggs_extra == []
+        assert metadata == {"s": None}
+
+    def test_only_time_interval_column(self):
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2})
+        result = collect_aggregations(lf.collect_schema(), None, [], [])
+        assert len(result[0]) == 1
+        assert result[1] == [] and result[2] == [] and result[3] == {}
+        assert self._run(lf, result).columns == [TIME_INTERVAL_COL, " __Number of values"]
+
+    def test_metadata_preserves_schema_order(self):
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)], "z": [1], "a": ["x"]})
+        _, _, _, metadata = collect_aggregations(lf.collect_schema(), None, [], [])
+        assert list(metadata) == ["z", "a"]
+
+    def test_string_target_column_yields_null_average(self):
+        # NOTE (suspected bug, not fixed): no dtype validation for target_column;
+        # a String target silently yields a null/str "Target average" column.
+        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "t": ["a", "b"]})
+        result = collect_aggregations(lf.collect_schema(), "t", [], [])
+        df = self._run(lf, result)
+        assert df[" __Target average"].to_list() == [None]
 
 
 # ---------------------------------------------------------------------------
@@ -325,3 +462,151 @@ class TestMakePreprocessing:
         config = {}
         with pytest.raises(SystemExit):
             make_preprocessing(lf, config)
+
+    def test_output_sorted_by_time_interval(self):
+        lf = pl.LazyFrame({
+            "d": [datetime(2024, 1, 3), datetime(2024, 1, 1), datetime(2024, 1, 2)],
+            "value": [1, 2, 3],
+        })
+        df, _ = make_preprocessing(lf, {"date_column": "d"})
+        assert df[TIME_INTERVAL_COL].to_list() == sorted(df[TIME_INTERVAL_COL].to_list())
+
+    def test_string_date_column_pipeline(self):
+        lf = pl.LazyFrame({"d": ["2024-01-01", "2024-01-01", "2024-01-02"], "value": [1, 2, 3]})
+        df, _ = make_preprocessing(lf, {"date_column": "d"})
+        assert df[TIME_INTERVAL_COL].to_list() == [date(2024, 1, 1), date(2024, 1, 2)]
+        assert df[" __Number of values"].to_list() == [2, 1]
+
+    def test_column_layout_common_then_extra(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "value": [1]})
+        df, _ = make_preprocessing(lf, {"date_column": "d"})
+        assert df.columns == [
+            TIME_INTERVAL_COL,
+            " __Number of values",
+            f"{PREFIX_COL} value __Number of unique values",
+            f"{PREFIX_COL} value __Proportion of missing values",
+            f"{PREFIX_COL_E} value __Min",
+            f"{PREFIX_COL_E} value __Max",
+            f"{PREFIX_COL_E} value __Mean",
+            f"{PREFIX_COL_E} value __Median",
+            f"{PREFIX_COL_E} value __Standard deviation",
+        ]
+
+    def test_target_column_average(self):
+        lf = pl.LazyFrame({
+            "d": [datetime(2024, 1, 1), datetime(2024, 1, 1), datetime(2024, 1, 2)],
+            "t": [0, 1, 1],
+        })
+        df, metadata = make_preprocessing(lf, {"date_column": "d", "target_column": "t"})
+        assert df[" __Target average"].to_list() == [0.5, 1.0]
+        # target column also gets regular per-column stats
+        assert metadata["t"] == "Int64"
+
+    def test_string_and_categorical_stats_use_lengths(self):
+        lf = pl.LazyFrame({
+            "d": [datetime(2024, 1, 1)] * 2,
+            "s": ["ab", "abcd"],
+            "c": pl.Series(["x", "yyy"], dtype=pl.Categorical),
+        })
+        df, metadata = make_preprocessing(lf, {"date_column": "d"})
+        assert metadata == {"s": "String", "c": "Categorical"}
+        assert df[f"{PREFIX_COL_E} s __Mean"].to_list() == [3]
+        assert df[f"{PREFIX_COL_E} c __Max"].to_list() == [3]
+
+    def test_columns_to_exclude_extra_statistics(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "a": [1], "b": [2]})
+        config = {"date_column": "d", "columns_to_exclude_extra_statistics": ["a"]}
+        df, metadata = make_preprocessing(lf, config)
+        assert metadata == {"a": None, "b": "Int64"}
+        assert f"{PREFIX_COL} a __Number of unique values" in df.columns
+        assert f"{PREFIX_COL_E} a __Min" not in df.columns
+        assert f"{PREFIX_COL_E} b __Min" in df.columns
+
+    def test_no_extra_statistics_at_all_skips_join(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "a": [1]})
+        config = {"date_column": "d", "columns_to_exclude_extra_statistics": ["a"]}
+        df, _ = make_preprocessing(lf, config)
+        assert not any(c.startswith(PREFIX_COL_E) for c in df.columns)
+
+    def test_only_date_column_yields_only_counts(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 3})
+        df, metadata = make_preprocessing(lf, {"date_column": "d"})
+        assert df.columns == [TIME_INTERVAL_COL, " __Number of values"]
+        assert df[" __Number of values"].to_list() == [3]
+        assert metadata == {}
+
+    def test_filter_removing_all_rows_returns_empty_frame(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "value": [1]})
+        config = {"date_column": "d", "filter": "SELECT * FROM self WHERE value > 100"}
+        df, metadata = make_preprocessing(lf, config)
+        assert df.height == 0
+        assert metadata == {"value": "Int64"}
+
+    def test_transformation_can_replace_date_column(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1, 5)], "value": [1]})
+        config = {"date_column": "d", "transformations": {"d": "d + INTERVAL '1 day'"}}
+        df, _ = make_preprocessing(lf, config)
+        assert df[TIME_INTERVAL_COL].to_list() == [datetime(2024, 1, 2)]
+
+    def test_metadata_reflects_transformed_dtype(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "value": [1]})
+        config = {"date_column": "d", "transformations": {"value": "CAST(value AS DOUBLE)"}}
+        _, metadata = make_preprocessing(lf, config)
+        assert metadata["value"] == "Float64"
+
+    def test_streaming_engine_and_chunk_size_accepted(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "value": [1]})
+        config = {"date_column": "d", "engine": "streaming", "streaming_chunk_size": 10}
+        df, _ = make_preprocessing(lf, config)
+        assert df[" __Number of values"].to_list() == [1]
+
+    def test_non_int_streaming_chunk_size_ignored(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "value": [1]})
+        config = {"date_column": "d", "streaming_chunk_size": "10"}
+        df, _ = make_preprocessing(lf, config)
+        assert df.height == 1
+
+    def test_null_date_rows_dropped_when_extra_stats_present(self):
+        # NOTE (suspected bug, not fixed): rows with a null date form a null
+        # group key; the inner join of the common and extra aggregations does
+        # not match null keys, so that group silently vanishes. The row count
+        # is therefore under-reported (1 row, instead of 2 groups).
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1), None], "value": [1, 2]})
+        df, _ = make_preprocessing(lf, {"date_column": "d"})
+        assert df[TIME_INTERVAL_COL].to_list() == [datetime(2024, 1, 1)]
+        assert df[" __Number of values"].to_list() == [1]
+
+    def test_null_date_rows_kept_when_no_extra_stats(self):
+        # NOTE: counterpart of the test above. With no extra stats there is
+        # no join, so the null-date group IS kept (inconsistent behavior).
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1), None]})
+        df, _ = make_preprocessing(lf, {"date_column": "d"})
+        assert df.height == 2
+        assert df[TIME_INTERVAL_COL].to_list() == [None, datetime(2024, 1, 1)]
+
+    def test_default_target_column_name_literal(self):
+        # NOTE: when "target_column" is absent from config, the literal
+        # "target_column" is looked up in the schema — a column of that name
+        # is silently treated as the target.
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "target_column": [0, 1]})
+        df, _ = make_preprocessing(lf, {"date_column": "d"})
+        assert df[" __Target average"].to_list() == [0.5]
+
+    def test_excluded_target_column_still_averaged(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "t": [0, 1], "v": [1, 2]})
+        config = {"date_column": "d", "target_column": "t", "columns_to_exclude": ["t"]}
+        df, metadata = make_preprocessing(lf, config)
+        assert "t" not in metadata
+        assert df[" __Target average"].to_list() == [0.5]
+
+    def test_unsupported_date_dtype_exits(self):
+        lf = pl.LazyFrame({"d": [1, 2], "value": [1, 2]})
+        with pytest.raises(SystemExit):
+            make_preprocessing(lf, {"date_column": "d"})
+
+    def test_unparseable_string_date_exits_via_exception_handler(self):
+        # Unlike SystemExit raised directly, a Polars ComputeError raised at
+        # collect time IS caught by exception_handler(exit_on_error=True).
+        lf = pl.LazyFrame({"d": ["not-a-date"], "value": [1]})
+        with pytest.raises(SystemExit):
+            make_preprocessing(lf, {"date_column": "d"})
