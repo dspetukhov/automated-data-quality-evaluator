@@ -7,7 +7,7 @@
             "nameDest": "Categorical"
         }
     },
-    "output": "cifer-fraud-detection-dataset",
+    "output": "reports/cifer-fraud-detection",
     "engine": "streaming",
     "filter": "select * from self where step > 1 and step < 743",
     "transformations": {

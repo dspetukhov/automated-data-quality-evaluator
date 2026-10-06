@@ -5,10 +5,11 @@
             "timestamp": "Datetime"
         }
     },
-    "output": "financial-transactions-dataset-for-fraud-detection",
+    "output": "reports/financial-transactions-for-fraud-detection",
     "filter": "select * from self where timestamp::date > '2023-01-01' and timestamp::date < '2024-01-01'",
     "date_column": "timestamp",
     "target_column": "is_fraud",
+    "columns_to_exclude": ["transaction_id"],
     "outliers": {
         "criterion": "IQR",
         "multiplier_iqr": 1.5,

@@ -2,9 +2,10 @@
     "source": {
         "file_path": "/datasets/_counterfeit_transactions.csv"
     },
-    "output": "counterfeit-product-detection-dataset",
+    "output": "reports/counterfeit-product-detection",
     "date_column": "transaction_date",
     "target_column": "involves_counterfeit",
+    "columns_to_exclude": ["transaction_id"],
     "transformations": {
         "transaction_date": "DATE(transaction_date, '%Y-%m-%d %H:%M:%S')",
         "involves_counterfeit": "involves_counterfeit::int"

@@ -2,7 +2,7 @@
     "source": {
         "file_path": "/datasets/cc_fraud_detection_dataset.parquet"
     },
-    "output": "hf-cc-fraud_detection_dataset",
+    "output": "reports/cc-fraud-detection",
     "date_column": "trans_date",
     "target_column": "is_fraud",
     "transformations": {

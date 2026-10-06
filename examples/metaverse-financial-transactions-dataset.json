@@ -5,7 +5,7 @@
             "timestamp": "Datetime"
         }
     },
-    "output": "examples/metaverse-financial-transactions-dataset",
+    "output": "reports/metaverse-financial-transactions",
     "transformations": {
         "target_column": "(anomaly = 'high_risk')::int"
     },

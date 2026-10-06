@@ -2,11 +2,13 @@
     "source": {
         "file_path": "/datasets/FraudPaymentData.parquet"
     },
+    "output": "reports/fraud-payment",
     "date_column": "Time_step",
     "target_column": "Label",
     "transformations": {
         "Time_step": "DATE(Time_step, '%m/%d/%Y %H:%M')"
     },
+    "columns_to_exclude": ["Transaction_Id"],
     "outliers": {
         "criterion": "IQR",
         "multiplier_iqr": 1.5,

@@ -2,7 +2,7 @@
     "source": {
         "file_path": "hf://datasets/Ransaka/fraud_prediction_300K/data_50K.parquet"
     },
-    "output": "fraud-prediction-300K",
+    "output": "reports/fraud-prediction-300K",
     "date_column": "S_2",
     "target_column": "target",
     "columns_to_exclude": ["customer_ID"],

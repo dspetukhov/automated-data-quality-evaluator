@@ -5,7 +5,7 @@
             "timestamp": "Datetime"
         }
     },
-    "output": "mock-fraud-detection-dataset",
+    "output": "reports/mock-fraud-detection",
     "date_column": "timestamp",
     "target_column": "is_fraud",
     "columns_to_exclude": ["transaction_id"],

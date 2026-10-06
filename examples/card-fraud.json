@@ -3,12 +3,14 @@
         "file_path": "hf://datasets/Tichies/card-fraud/saske.csv",
         "schema_overrides": {
             "Transaction_Date": "Datetime",
-            "User_ID": "String",
-            "Device_ID": "String",
-            "Merchant_ID": "String"
+            "Card_Type": "Categorical",
+            "Transaction_Currency": "Categorical",
+            "Transaction_Status": "Categorical",
+            "Transaction_Category": "Categorical"
         }
     },
-    "output": "hf-card-fraud",
+    "output": "reports/card-fraud",
+    "filter": "select * from self where Transaction_Date::date < '2024-03-10'",
     "date_column": "Transaction_Date",
     "target_column": "isFraud",
     "columns_to_exclude": ["Transaction_ID"],

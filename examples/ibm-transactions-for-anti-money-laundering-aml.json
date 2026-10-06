@@ -4,15 +4,18 @@
         "schema_overrides": {
             "Timestamp": "Datetime",
             "From Bank": "Categorical",
-            "Account": "Categorical",
             "To Bank": "Categorical",
-            "Account_duplicated_0": "Categorical",
-            "Receiving Currency": "Categorical",
+            "Account": "String",
+            "Account_duplicated_0": "String",
+            "Payment Format": "Categorical",
             "Payment Currency": "Categorical",
-            "Payment Format": "Categorical"
+            "Receiving Currency": "Categorical",
+            "Amount Paid": "Float32",
+            "Amount Received": "Float32",
+            "Is Laundering": "Int8"
         }
     },
-    "output": "ibm-transactions-for-anti-money-laundering",
+    "output": "reports/ibm-transactions-for-anti-money-laundering",
     "engine": "streaming",
     "streaming_chunk_size": 2026,
     "date_column": "Timestamp",

@@ -2,7 +2,7 @@
     "source": {
         "file_path": "/datasets/fraud.csv"
     },
-    "output": "fraud-transactions-detection",
+    "output": "reports/fraud-transactions-detection",
     "date_column": "rep_loan_date",
     "target_column": "bad_flag",
     "outliers": {

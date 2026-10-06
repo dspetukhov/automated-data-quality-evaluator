@@ -7,7 +7,7 @@
             "zip": "String"
         }
     },
-    "output": "credit-card-fraud-prediction",
+    "output": "reports/credit-card-fraud-prediction",
     "date_column": "trans_date_trans_time",
     "target_column": "is_fraud",
     "columns_to_exclude": ["", "unix_time"],
