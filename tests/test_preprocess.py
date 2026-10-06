@@ -364,8 +364,8 @@ class TestCollectAggregations:
         assert list(metadata) == ["z", "a"]
 
     def test_string_target_column_yields_null_average(self):
-        # NOTE (suspected bug, not fixed): no dtype validation for target_column;
-        # a String target silently yields a null/str "Target average" column.
+        # collect_aggregations itself does not validate the target dtype;
+        # make_preprocessing drops non-numeric targets before calling it.
         lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "t": ["a", "b"]})
         result = collect_aggregations(lf.collect_schema(), "t", [], [])
         df = self._run(lf, result)
@@ -566,33 +566,47 @@ class TestMakePreprocessing:
         df, _ = make_preprocessing(lf, config)
         assert df.height == 1
 
-    def test_null_date_rows_dropped_when_extra_stats_present(self):
-        # NOTE (suspected bug, not fixed): rows with a null date form a null
-        # group key; the inner join of the common and extra aggregations does
-        # not match null keys, so that group silently vanishes. The row count
-        # is therefore under-reported (1 row, instead of 2 groups).
+    def test_null_date_rows_kept_when_extra_stats_present(self):
+        # The join of common and extra aggregations matches null keys, so the
+        # null-date group survives (same as without extra stats).
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1), None], "value": [1, 2]})
         df, _ = make_preprocessing(lf, {"date_column": "d"})
-        assert df[TIME_INTERVAL_COL].to_list() == [datetime(2024, 1, 1)]
-        assert df[" __Number of values"].to_list() == [1]
+        assert df[TIME_INTERVAL_COL].to_list() == [None, datetime(2024, 1, 1)]
+        assert df[" __Number of values"].to_list() == [1, 1]
+        assert df["e__ value __Max"].to_list() == [2, 1]
 
     def test_null_date_rows_kept_when_no_extra_stats(self):
-        # NOTE: counterpart of the test above. With no extra stats there is
-        # no join, so the null-date group IS kept (inconsistent behavior).
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1), None]})
         df, _ = make_preprocessing(lf, {"date_column": "d"})
         assert df.height == 2
         assert df[TIME_INTERVAL_COL].to_list() == [None, datetime(2024, 1, 1)]
 
-    def test_default_target_column_name_literal(self):
-        # NOTE: when "target_column" is absent from config, the literal
-        # "target_column" is looked up in the schema — a column of that name
-        # is silently treated as the target.
+    def test_column_named_target_column_not_target_by_default(self):
+        # "target_column" absent from config: no target, even if a column has that name.
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "target_column": [0, 1]})
         df, _ = make_preprocessing(lf, {"date_column": "d"})
+        assert " __Target average" not in df.columns
+
+    def test_string_target_column_skipped(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "t": ["a", "b"]})
+        df, metadata = make_preprocessing(lf, {"date_column": "d", "target_column": "t"})
+        assert " __Target average" not in df.columns
+        assert "t" in metadata
+
+    def test_boolean_target_column_averaged(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "t": [True, False]})
+        df, _ = make_preprocessing(lf, {"date_column": "d", "target_column": "t"})
         assert df[" __Target average"].to_list() == [0.5]
 
+    def test_bool_streaming_chunk_size_ignored(self):
+        lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "value": [1]})
+        before = pl.Config.state().get("POLARS_STREAMING_CHUNK_SIZE")
+        make_preprocessing(lf, {"date_column": "d", "streaming_chunk_size": True})
+        assert pl.Config.state().get("POLARS_STREAMING_CHUNK_SIZE") == before
+
     def test_excluded_target_column_still_averaged(self):
+        # Intended: a configured target always gets its average, even if excluded
+        # from per-column statistics.
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "t": [0, 1], "v": [1, 2]})
         config = {"date_column": "d", "target_column": "t", "columns_to_exclude": ["t"]}
         df, metadata = make_preprocessing(lf, config)

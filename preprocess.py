@@ -61,11 +61,15 @@ def make_preprocessing(
 
     # Get target_column
     target_column = config.get("target_column", "target_column")
-    if schema.get(target_column):
+    target_column_dtype = schema.get(target_column)
+    if target_column_dtype is None:
+        target_column = None
+        logging.warning("Target column not found")
+    elif target_column_dtype.is_numeric() or target_column_dtype == pl.Boolean:
         logging.info(f"Target column: {target_column}")
     else:
         target_column = None
-        logging.warning("Target column not found")
+        logging.warning(f"Target column type '{target_column_dtype}' is not numeric")
 
     # Collect aggregation expressions for each column except excluded ones
     aggs, aggs_extra, with_columns_extra, metadata = collect_aggregations(
@@ -76,8 +80,9 @@ def make_preprocessing(
     )
 
     # Set chunk size used in streaming engine
-    if isinstance(config.get("streaming_chunk_size"), int):
-        pl.Config.set_streaming_chunk_size(config["streaming_chunk_size"])
+    chunk_size = config.get("streaming_chunk_size")
+    if isinstance(chunk_size, int) and not isinstance(chunk_size, bool):
+        pl.Config.set_streaming_chunk_size(chunk_size)
 
     # Aggregate data by time intervals
     lf_all = [lf.group_by(TIME_INTERVAL_COL).agg(aggs)]
@@ -94,7 +99,9 @@ def make_preprocessing(
         df = df_all[0]
     else:
         df_agg, df_agg_extra = df_all
-        df = df_agg.join(df_agg_extra, on=TIME_INTERVAL_COL, how="inner")
+        df = df_agg.join(
+            df_agg_extra, on=TIME_INTERVAL_COL, how="inner", nulls_equal=True
+        )
 
     return df.sort(TIME_INTERVAL_COL), metadata
 
