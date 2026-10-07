@@ -385,8 +385,8 @@ It is also possible to replace `"transaction_date": "DATE(transaction_date, '%Y-
         "file_path": "/datasets/LI-Large_Trans.csv",
         "schema_overrides": {
             "Timestamp": "Datetime",
-            "From Bank": "Categorical",
-            "To Bank": "Categorical",
+            "From Bank": "String",
+            "To Bank": "String",
             "Account": "String",
             "Account_duplicated_0": "String",
             "Payment Format": "Categorical",
