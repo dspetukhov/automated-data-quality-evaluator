@@ -53,10 +53,12 @@ def make_preprocessing(
                 or `None` for columns in `"columns_to_exclude_extra_statistics"`.
 
     Raises:
-        SystemExit: Via the `exception_handler` decorator, which logs any
-            exception raised while preprocessing (e.g. a malformed
-            filter/transformation expression, an invalid `"time_interval"`,
-            or `date_column` absent from `schema`).
+        SystemExit:
+            - Directly if `date_column` is missing or its dtype is not one of
+                `String`, `Datetime`, or `Date`.
+            - Via the `exception_handler` decorator for any other exception
+                raised while preprocessing (e.g. a malformed
+                filter/transformation expression or an invalid `"time_interval"`).
     """
     # Apply filter for rows and columns
     lf = apply_filter(lf, config.get("filter"))
@@ -77,9 +79,10 @@ def make_preprocessing(
         raise SystemExit(
             f"Exit: 'date_column' type '{date_column_dtype}' is not supported"
         )
-    lf, schema = process_date_column(
+    lf = process_date_column(
         lf, date_column, date_column_dtype, config.get("time_interval", "1d")
     )
+    schema = lf.collect_schema()
 
     # Verify target_column
     target_column = config.get("target_column", "target_column")
@@ -116,7 +119,6 @@ def make_preprocessing(
             .agg(aggs_extra)
         )
 
-    # lf_agg.explain()  # uncomment to get the query plan or turn off/on optimizations
     df_all = pl.collect_all(lf_all, engine=config.get("engine", "auto"))
     if len(df_all) == 1:
         df = df_all[0]
@@ -184,7 +186,7 @@ def process_date_column(
     date_column: str,
     date_column_dtype: pl.DataType,
     time_interval: str,
-) -> tuple[pl.LazyFrame, pl.Schema]:
+) -> pl.LazyFrame:
     """Process `date_column` to divide it into time intervals.
 
     Converts `date_column` to a `Datetime` if it is a `String`
@@ -202,10 +204,8 @@ def process_date_column(
             e.g. `"1d"` for one day or `"1h"` for one hour.
 
     Returns:
-        tuple[pl.LazyFrame, pl.Schema]:
-            - LazyFrame with `date_column` divided into time intervals and
-                renamed to `TIME_INTERVAL_COL`.
-            - Schema of the returned LazyFrame.
+        pl.LazyFrame: LazyFrame with `date_column` divided into time intervals
+            and renamed to `TIME_INTERVAL_COL`.
     """
     if date_column_dtype == pl.String:
         # Convert date_column of string type into datetime type
@@ -218,7 +218,7 @@ def process_date_column(
     lf = lf.rename({date_column: TIME_INTERVAL_COL})
     logging.info(f"Date column: {date_column}")
 
-    return lf, lf.collect_schema()
+    return lf
 
 
 def collect_aggregations(
