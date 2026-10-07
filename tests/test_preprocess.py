@@ -14,7 +14,6 @@ from preprocess import (
 )
 from utility import PREFIX_COL, PREFIX_COL_E, TIME_INTERVAL_COL
 
-
 # ---------------------------------------------------------------------------
 # apply_filter
 # ---------------------------------------------------------------------------
@@ -87,61 +86,71 @@ class TestApplyTransformations:
 
 
 class TestProcessDateColumn:
-
     def test_string_date_column_converted_and_renamed(self):
         lf = pl.LazyFrame({"d": ["2024-01-01", "2024-01-02"]})
         schema = lf.collect_schema()
-        new_lf, new_schema = process_date_column(lf, "d", schema["d"], "1d")
+        new_lf = process_date_column(lf, "d", schema["d"], "1d")
+        new_schema = new_lf.collect_schema()
         assert TIME_INTERVAL_COL in new_schema.names()
         assert "d" not in new_schema.names()
         df = new_lf.collect()
         assert new_schema[TIME_INTERVAL_COL] == pl.Datetime
         assert df[TIME_INTERVAL_COL].to_list() == [
-            datetime(2024, 1, 1), datetime(2024, 1, 2)
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 2),
         ]
 
     def test_date_column_truncated_by_interval(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1, 5), datetime(2024, 1, 1, 15), datetime(2024, 1, 2, 3)]
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [
+                    datetime(2024, 1, 1, 5),
+                    datetime(2024, 1, 1, 15),
+                    datetime(2024, 1, 2, 3),
+                ]
+            }
+        )
         schema = lf.collect_schema()
-        new_lf, _ = process_date_column(lf, "d", schema["d"], "1d")
+        new_lf = process_date_column(lf, "d", schema["d"], "1d")
         df = new_lf.collect()
         assert df[TIME_INTERVAL_COL].to_list() == [
-            datetime(2024, 1, 1), datetime(2024, 1, 1), datetime(2024, 1, 2)
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 2),
         ]
 
     def test_datetime_column_truncated_by_hour(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1, 5, 15), datetime(2024, 1, 1, 5, 45)]
-        })
+        lf = pl.LazyFrame(
+            {"d": [datetime(2024, 1, 1, 5, 15), datetime(2024, 1, 1, 5, 45)]}
+        )
         schema = lf.collect_schema()
-        new_lf, _ = process_date_column(lf, "d", schema["d"], "1h")
+        new_lf = process_date_column(lf, "d", schema["d"], "1h")
         df = new_lf.collect()
         assert df[TIME_INTERVAL_COL].to_list() == [
-            datetime(2024, 1, 1, 5), datetime(2024, 1, 1, 5)
+            datetime(2024, 1, 1, 5),
+            datetime(2024, 1, 1, 5),
         ]
-
 
     def test_returned_schema_matches_returned_lazyframe(self):
         lf = pl.LazyFrame({"d": [date(2024, 1, 1)], "v": [1]})
-        new_lf, new_schema = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
-        assert new_schema == new_lf.collect_schema()
+        new_lf = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
+        new_schema = new_lf.collect_schema()
         assert new_schema.names() == [TIME_INTERVAL_COL, "v"]
         assert new_schema[TIME_INTERVAL_COL] == pl.Date
-
 
     def test_string_with_time_component_parsed_as_datetime(self):
         # String columns are parsed with `str.to_datetime(strict=True)`, so
         # datetime-formatted strings are supported.
         lf = pl.LazyFrame({"d": ["2024-01-01 10:30:00"]})
-        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1h")
-        assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [datetime(2024, 1, 1, 10)]
+        new_lf = process_date_column(lf, "d", lf.collect_schema()["d"], "1h")
+        assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [
+            datetime(2024, 1, 1, 10)
+        ]
 
     def test_unparseable_string_fails_lazily_at_collect(self):
         # Parse errors are deferred to .collect(), not raised here.
         lf = pl.LazyFrame({"d": ["not-a-date"]})
-        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
+        new_lf = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
         with pytest.raises(pl.exceptions.ComputeError):
             new_lf.collect()
 
@@ -149,7 +158,7 @@ class TestProcessDateColumn:
         # NOTE: time_interval is not validated up front; an invalid string only
         # fails at .collect() time with a Polars error (not a SystemExit).
         lf = pl.LazyFrame({"d": [date(2024, 1, 1)]})
-        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "xyz")
+        new_lf = process_date_column(lf, "d", lf.collect_schema()["d"], "xyz")
         with pytest.raises(pl.exceptions.InvalidOperationError):
             new_lf.collect()
 
@@ -157,21 +166,21 @@ class TestProcessDateColumn:
         # NOTE (suspected bug, not fixed): "1h" on a Date column silently leaves
         # dates unchanged rather than warning that the interval is too fine.
         lf = pl.LazyFrame({"d": [date(2024, 1, 1), date(2024, 1, 2)]})
-        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1h")
+        new_lf = process_date_column(lf, "d", lf.collect_schema()["d"], "1h")
         assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [
-            date(2024, 1, 1), date(2024, 1, 2)
+            date(2024, 1, 1),
+            date(2024, 1, 2),
         ]
 
     def test_weekly_interval_truncates_to_monday(self):
         lf = pl.LazyFrame({"d": [date(2024, 1, 3), date(2024, 1, 7)]})  # Wed, Sun
-        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1w")
+        new_lf = process_date_column(lf, "d", lf.collect_schema()["d"], "1w")
         assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [date(2024, 1, 1)] * 2
 
     def test_other_columns_preserved(self):
         lf = pl.LazyFrame({"d": [date(2024, 1, 1)], "v": [5]})
-        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
+        new_lf = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
         assert new_lf.collect()["v"].to_list() == [5]
-
 
 
 # ---------------------------------------------------------------------------
@@ -215,11 +224,13 @@ class TestCollectAggregations:
         assert df[" __Number of values"].to_list() == [3]
 
     def test_target_column_adds_mean_expr(self):
-        lf = pl.LazyFrame({
-            TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
-            "a": [1, 2],
-            "target": [0, 1],
-        })
+        lf = pl.LazyFrame(
+            {
+                TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
+                "a": [1, 2],
+                "target": [0, 1],
+            }
+        )
         result = collect_aggregations(lf.collect_schema(), "target", [], [])
         df = self._run(lf, result)
         assert df[" __Target average"].to_list() == [0.5]
@@ -230,11 +241,13 @@ class TestCollectAggregations:
         assert " __Target average" not in df.columns
 
     def test_excluded_column_not_in_metadata_or_aggs(self):
-        lf = pl.LazyFrame({
-            TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
-            "a": [1, 2],
-            "skip_me": [10, 20],
-        })
+        lf = pl.LazyFrame(
+            {
+                TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
+                "a": [1, 2],
+                "skip_me": [10, 20],
+            }
+        )
         result = collect_aggregations(lf.collect_schema(), None, ["skip_me"], [])
         assert "skip_me" not in result[3]
         assert "a" in result[3]
@@ -246,11 +259,13 @@ class TestCollectAggregations:
         # `columns_to_exclude` is skipped in the per-column loop, but its
         # " __Target average" is still computed because that expression is added
         # before the exclusion check.
-        lf = pl.LazyFrame({
-            TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
-            "a": [1, 2],
-            "target": [0, 1],
-        })
+        lf = pl.LazyFrame(
+            {
+                TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
+                "a": [1, 2],
+                "target": [0, 1],
+            }
+        )
         result = collect_aggregations(lf.collect_schema(), "target", ["target"], [])
         assert "target" not in result[3]
         df = self._run(lf, result)
@@ -263,10 +278,12 @@ class TestCollectAggregations:
         assert TIME_INTERVAL_COL not in metadata
 
     def test_numeric_column_metadata_and_stats(self):
-        lf = pl.LazyFrame({
-            TIME_INTERVAL_COL: [date(2024, 1, 1)] * 3,
-            "a": [1, 2, None],
-        })
+        lf = pl.LazyFrame(
+            {
+                TIME_INTERVAL_COL: [date(2024, 1, 1)] * 3,
+                "a": [1, 2, None],
+            }
+        )
         schema = lf.collect_schema()
         result = collect_aggregations(schema, None, [], [])
         assert result[3]["a"] == str(schema["a"])
@@ -285,10 +302,12 @@ class TestCollectAggregations:
         ]
 
     def test_string_column_uses_char_length_via_with_columns(self):
-        lf = pl.LazyFrame({
-            TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
-            "s": ["ab", "abcd"],
-        })
+        lf = pl.LazyFrame(
+            {
+                TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
+                "s": ["ab", "abcd"],
+            }
+        )
         result = collect_aggregations(lf.collect_schema(), None, [], [])
         assert len(result[2]) == 1  # one len_chars expression for "s"
         assert result[3]["s"] == "String"
@@ -301,10 +320,12 @@ class TestCollectAggregations:
         assert df[f"{PREFIX_COL} s __Number of unique values"].to_list() == [2]
 
     def test_categorical_column_uses_char_length(self):
-        lf = pl.LazyFrame({
-            TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
-            "c": pl.Series(["x", "yyy"], dtype=pl.Categorical),
-        })
+        lf = pl.LazyFrame(
+            {
+                TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2,
+                "c": pl.Series(["x", "yyy"], dtype=pl.Categorical),
+            }
+        )
         result = collect_aggregations(lf.collect_schema(), None, [], [])
         assert len(result[2]) == 1
         assert result[3]["c"] == "Categorical"
@@ -313,7 +334,9 @@ class TestCollectAggregations:
         assert df[f"{PREFIX_COL_E} c __Max"].to_list() == [3]
 
     def test_boolean_column_stats_not_length_based(self):
-        lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "b": [True, False]})
+        lf = pl.LazyFrame(
+            {TIME_INTERVAL_COL: [date(2024, 1, 1)] * 2, "b": [True, False]}
+        )
         result = collect_aggregations(lf.collect_schema(), None, [], [])
         assert result[2] == []
         df = self._run(lf, result)
@@ -345,7 +368,10 @@ class TestCollectAggregations:
         result = collect_aggregations(lf.collect_schema(), None, [], [])
         assert len(result[0]) == 1
         assert result[1] == [] and result[2] == [] and result[3] == {}
-        assert self._run(lf, result).columns == [TIME_INTERVAL_COL, " __Number of values"]
+        assert self._run(lf, result).columns == [
+            TIME_INTERVAL_COL,
+            " __Number of values",
+        ]
 
     def test_metadata_preserves_schema_order(self):
         lf = pl.LazyFrame({TIME_INTERVAL_COL: [date(2024, 1, 1)], "z": [1], "a": ["x"]})
@@ -368,24 +394,32 @@ class TestCollectAggregations:
 
 class TestMakePreprocessing:
     def test_full_pipeline_basic(self):
-        lf = pl.LazyFrame({
-            "d": [
-                datetime(2024, 1, 1, 3), datetime(2024, 1, 1, 20),
-                datetime(2024, 1, 2, 5),
-            ],
-            "value": [10, 20, 30],
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [
+                    datetime(2024, 1, 1, 3),
+                    datetime(2024, 1, 1, 20),
+                    datetime(2024, 1, 2, 5),
+                ],
+                "value": [10, 20, 30],
+            }
+        )
         config = {"date_column": "d", "time_interval": "1d"}
         df, metadata = make_preprocessing(lf, config)
-        assert df[TIME_INTERVAL_COL].to_list() == [datetime(2024, 1, 1), datetime(2024, 1, 2)]
+        assert df[TIME_INTERVAL_COL].to_list() == [
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 2),
+        ]
         assert df[" __Number of values"].to_list() == [2, 1]
         assert metadata["value"] == "Int64"
 
     def test_filter_and_transformation_applied(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 3)],
-            "value": [1, 2, 3],
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 3)],
+                "value": [1, 2, 3],
+            }
+        )
         config = {
             "date_column": "d",
             "filter": "SELECT * FROM self WHERE value > 1",
@@ -396,7 +430,7 @@ class TestMakePreprocessing:
         assert "doubled" in metadata
 
     def test_missing_date_column_exits(self):
-        # process_date_column raises SystemExit (BaseException, not Exception),
+        # make_preprocessing raises SystemExit (BaseException, not Exception),
         # so exception_handler's `except Exception` does not intercept it —
         # it propagates straight out of make_preprocessing.
         lf = pl.LazyFrame({"value": [1, 2, 3]})
@@ -405,30 +439,36 @@ class TestMakePreprocessing:
             make_preprocessing(lf, config)
 
     def test_target_column_not_in_schema_logs_warning_and_continues(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1)],
-            "value": [1],
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 1)],
+                "value": [1],
+            }
+        )
         config = {"date_column": "d", "target_column": "missing_target"}
         df, metadata = make_preprocessing(lf, config)
         assert " __Target average" not in df.columns
 
     def test_columns_to_exclude(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1)],
-            "value": [1],
-            "secret": [42],
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 1)],
+                "value": [1],
+                "secret": [42],
+            }
+        )
         config = {"date_column": "d", "columns_to_exclude": ["secret"]}
         df, metadata = make_preprocessing(lf, config)
         assert "secret" not in metadata
         assert not any("secret" in c for c in df.columns)
 
     def test_default_time_interval_is_one_day(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1, 1), datetime(2024, 1, 1, 23)],
-            "value": [1, 2],
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 1, 1), datetime(2024, 1, 1, 23)],
+                "value": [1, 2],
+            }
+        )
         config = {"date_column": "d"}
         df, _ = make_preprocessing(lf, config)
         assert df[TIME_INTERVAL_COL].to_list() == [datetime(2024, 1, 1)]
@@ -436,10 +476,12 @@ class TestMakePreprocessing:
     def test_invalid_sql_filter_triggers_exit_on_error(self):
         # apply_filter raises inside lf.sql() for malformed SQL; caught by
         # exception_handler(exit_on_error=True) → logs and sys.exit(1)
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1)],
-            "value": [1],
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 1)],
+                "value": [1],
+            }
+        )
         config = {"date_column": "d", "filter": "NOT VALID SQL AT ALL !!"}
         with pytest.raises(SystemExit):
             make_preprocessing(lf, config)
@@ -453,18 +495,25 @@ class TestMakePreprocessing:
             make_preprocessing(lf, config)
 
     def test_output_sorted_by_time_interval(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 3), datetime(2024, 1, 1), datetime(2024, 1, 2)],
-            "value": [1, 2, 3],
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 3), datetime(2024, 1, 1), datetime(2024, 1, 2)],
+                "value": [1, 2, 3],
+            }
+        )
         df, _ = make_preprocessing(lf, {"date_column": "d"})
-        assert df[TIME_INTERVAL_COL].to_list() == sorted(df[TIME_INTERVAL_COL].to_list())
+        assert df[TIME_INTERVAL_COL].to_list() == sorted(
+            df[TIME_INTERVAL_COL].to_list()
+        )
 
     def test_string_date_column_pipeline(self):
-        lf = pl.LazyFrame({"d": ["2024-01-01", "2024-01-01", "2024-01-02"], "value": [1, 2, 3]})
+        lf = pl.LazyFrame(
+            {"d": ["2024-01-01", "2024-01-01", "2024-01-02"], "value": [1, 2, 3]}
+        )
         df, _ = make_preprocessing(lf, {"date_column": "d"})
         assert df[TIME_INTERVAL_COL].to_list() == [
-            datetime(2024, 1, 1), datetime(2024, 1, 2)
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 2),
         ]
         assert df[" __Number of values"].to_list() == [2, 1]
 
@@ -484,21 +533,27 @@ class TestMakePreprocessing:
         ]
 
     def test_target_column_average(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1), datetime(2024, 1, 1), datetime(2024, 1, 2)],
-            "t": [0, 1, 1],
-        })
-        df, metadata = make_preprocessing(lf, {"date_column": "d", "target_column": "t"})
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 1), datetime(2024, 1, 1), datetime(2024, 1, 2)],
+                "t": [0, 1, 1],
+            }
+        )
+        df, metadata = make_preprocessing(
+            lf, {"date_column": "d", "target_column": "t"}
+        )
         assert df[" __Target average"].to_list() == [0.5, 1.0]
         # target column also gets regular per-column stats
         assert metadata["t"] == "Int64"
 
     def test_string_and_categorical_stats_use_lengths(self):
-        lf = pl.LazyFrame({
-            "d": [datetime(2024, 1, 1)] * 2,
-            "s": ["ab", "abcd"],
-            "c": pl.Series(["x", "yyy"], dtype=pl.Categorical),
-        })
+        lf = pl.LazyFrame(
+            {
+                "d": [datetime(2024, 1, 1)] * 2,
+                "s": ["ab", "abcd"],
+                "c": pl.Series(["x", "yyy"], dtype=pl.Categorical),
+            }
+        )
         df, metadata = make_preprocessing(lf, {"date_column": "d"})
         assert metadata == {"s": "String", "c": "Categorical"}
         assert df[f"{PREFIX_COL_E} s __Mean"].to_list() == [3]
@@ -541,7 +596,10 @@ class TestMakePreprocessing:
 
     def test_metadata_reflects_transformed_dtype(self):
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)], "value": [1]})
-        config = {"date_column": "d", "transformations": {"value": "CAST(value AS DOUBLE)"}}
+        config = {
+            "date_column": "d",
+            "transformations": {"value": "CAST(value AS DOUBLE)"},
+        }
         _, metadata = make_preprocessing(lf, config)
         assert metadata["value"] == "Float64"
 
@@ -580,7 +638,9 @@ class TestMakePreprocessing:
 
     def test_string_target_column_skipped(self):
         lf = pl.LazyFrame({"d": [datetime(2024, 1, 1)] * 2, "t": ["a", "b"]})
-        df, metadata = make_preprocessing(lf, {"date_column": "d", "target_column": "t"})
+        df, metadata = make_preprocessing(
+            lf, {"date_column": "d", "target_column": "t"}
+        )
         assert " __Target average" not in df.columns
         assert "t" in metadata
 
