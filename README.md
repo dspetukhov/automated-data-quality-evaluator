@@ -276,13 +276,6 @@ If the column has a mixed format, e.g., with and without fractional seconds, but
 
 In cases of complex mixed time formats raising `ComputeError`, manual data cleaning to standardize the formats remains the best solution, although such cases are uncommon.
 
----
-
-The last identified issue relates to processing large CSV files exceeding available RAM. In such cases, the following helps:
-
-- Convert string columns to Polars' categorical type by assigning the `Categorical` value in `schema_overrides`,
-- In the configuration, assign the `streaming` value to `engine` and start with a value of approximately 50000 for `streaming_chunk_size` (readjust based on observed memory usage if necessary).
-
 [Back to table of contents](#table-of-contents)
 
 ## Dataset reading examples
