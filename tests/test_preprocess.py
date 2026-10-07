@@ -87,28 +87,25 @@ class TestApplyTransformations:
 
 
 class TestProcessDateColumn:
-    def test_missing_date_column_raises_system_exit(self):
-        lf = pl.LazyFrame({"a": [1, 2, 3]})
-        schema = lf.collect_schema()
-        with pytest.raises(SystemExit) as exc:
-            process_date_column(lf, schema, "missing_col", "1d")
-        assert "no column 'missing_col'" in str(exc.value)
 
     def test_string_date_column_converted_and_renamed(self):
         lf = pl.LazyFrame({"d": ["2024-01-01", "2024-01-02"]})
         schema = lf.collect_schema()
-        new_lf, new_schema = process_date_column(lf, schema, "d", "1d")
+        new_lf, new_schema = process_date_column(lf, "d", schema["d"], "1d")
         assert TIME_INTERVAL_COL in new_schema.names()
         assert "d" not in new_schema.names()
         df = new_lf.collect()
-        assert df[TIME_INTERVAL_COL].to_list() == [date(2024, 1, 1), date(2024, 1, 2)]
+        assert new_schema[TIME_INTERVAL_COL] == pl.Datetime
+        assert df[TIME_INTERVAL_COL].to_list() == [
+            datetime(2024, 1, 1), datetime(2024, 1, 2)
+        ]
 
     def test_date_column_truncated_by_interval(self):
         lf = pl.LazyFrame({
             "d": [datetime(2024, 1, 1, 5), datetime(2024, 1, 1, 15), datetime(2024, 1, 2, 3)]
         })
         schema = lf.collect_schema()
-        new_lf, _ = process_date_column(lf, schema, "d", "1d")
+        new_lf, _ = process_date_column(lf, "d", schema["d"], "1d")
         df = new_lf.collect()
         assert df[TIME_INTERVAL_COL].to_list() == [
             datetime(2024, 1, 1), datetime(2024, 1, 1), datetime(2024, 1, 2)
@@ -119,40 +116,32 @@ class TestProcessDateColumn:
             "d": [datetime(2024, 1, 1, 5, 15), datetime(2024, 1, 1, 5, 45)]
         })
         schema = lf.collect_schema()
-        new_lf, _ = process_date_column(lf, schema, "d", "1h")
+        new_lf, _ = process_date_column(lf, "d", schema["d"], "1h")
         df = new_lf.collect()
         assert df[TIME_INTERVAL_COL].to_list() == [
             datetime(2024, 1, 1, 5), datetime(2024, 1, 1, 5)
         ]
 
-    def test_non_string_non_date_column_raises_system_exit(self):
-        # date_column with an unsupported dtype (e.g. plain Int64) raises
-        # SystemExit immediately rather than a Polars error at .collect() time.
-        lf = pl.LazyFrame({"d": [1, 2, 3]})
-        schema = lf.collect_schema()
-        with pytest.raises(SystemExit) as exc:
-            process_date_column(lf, schema, "d", "1d")
-        assert "not supported" in str(exc.value)
 
     def test_returned_schema_matches_returned_lazyframe(self):
         lf = pl.LazyFrame({"d": [date(2024, 1, 1)], "v": [1]})
-        new_lf, new_schema = process_date_column(lf, lf.collect_schema(), "d", "1d")
+        new_lf, new_schema = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
         assert new_schema == new_lf.collect_schema()
         assert new_schema.names() == [TIME_INTERVAL_COL, "v"]
         assert new_schema[TIME_INTERVAL_COL] == pl.Date
 
-    def test_date_dtype_unsupported_boolean_raises_system_exit(self):
-        lf = pl.LazyFrame({"d": [True, False]})
-        with pytest.raises(SystemExit) as exc:
-            process_date_column(lf, lf.collect_schema(), "d", "1d")
-        assert "not supported" in str(exc.value)
 
-    def test_string_with_time_component_fails_lazily_at_collect(self):
-        # NOTE (suspected limitation, not fixed): String columns are parsed with
-        # `str.to_date(strict=True)`, so datetime-formatted strings are NOT supported.
-        # The error is not raised by process_date_column but deferred to .collect().
-        lf = pl.LazyFrame({"d": ["2024-01-01 10:00:00"]})
-        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1d")
+    def test_string_with_time_component_parsed_as_datetime(self):
+        # String columns are parsed with `str.to_datetime(strict=True)`, so
+        # datetime-formatted strings are supported.
+        lf = pl.LazyFrame({"d": ["2024-01-01 10:30:00"]})
+        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1h")
+        assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [datetime(2024, 1, 1, 10)]
+
+    def test_unparseable_string_fails_lazily_at_collect(self):
+        # Parse errors are deferred to .collect(), not raised here.
+        lf = pl.LazyFrame({"d": ["not-a-date"]})
+        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
         with pytest.raises(pl.exceptions.ComputeError):
             new_lf.collect()
 
@@ -160,27 +149,27 @@ class TestProcessDateColumn:
         # NOTE: time_interval is not validated up front; an invalid string only
         # fails at .collect() time with a Polars error (not a SystemExit).
         lf = pl.LazyFrame({"d": [date(2024, 1, 1)]})
-        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "xyz")
+        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "xyz")
         with pytest.raises(pl.exceptions.InvalidOperationError):
             new_lf.collect()
 
     def test_sub_day_interval_on_date_column_is_silent_noop(self):
         # NOTE (suspected bug, not fixed): "1h" on a Date column silently leaves
         # dates unchanged rather than warning that the interval is too fine.
-        lf = pl.LazyFrame({"d": ["2024-01-01", "2024-01-02"]})
-        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1h")
+        lf = pl.LazyFrame({"d": [date(2024, 1, 1), date(2024, 1, 2)]})
+        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1h")
         assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [
             date(2024, 1, 1), date(2024, 1, 2)
         ]
 
     def test_weekly_interval_truncates_to_monday(self):
         lf = pl.LazyFrame({"d": [date(2024, 1, 3), date(2024, 1, 7)]})  # Wed, Sun
-        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1w")
+        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1w")
         assert new_lf.collect()[TIME_INTERVAL_COL].to_list() == [date(2024, 1, 1)] * 2
 
     def test_other_columns_preserved(self):
         lf = pl.LazyFrame({"d": [date(2024, 1, 1)], "v": [5]})
-        new_lf, _ = process_date_column(lf, lf.collect_schema(), "d", "1d")
+        new_lf, _ = process_date_column(lf, "d", lf.collect_schema()["d"], "1d")
         assert new_lf.collect()["v"].to_list() == [5]
 
 
@@ -474,7 +463,9 @@ class TestMakePreprocessing:
     def test_string_date_column_pipeline(self):
         lf = pl.LazyFrame({"d": ["2024-01-01", "2024-01-01", "2024-01-02"], "value": [1, 2, 3]})
         df, _ = make_preprocessing(lf, {"date_column": "d"})
-        assert df[TIME_INTERVAL_COL].to_list() == [date(2024, 1, 1), date(2024, 1, 2)]
+        assert df[TIME_INTERVAL_COL].to_list() == [
+            datetime(2024, 1, 1), datetime(2024, 1, 2)
+        ]
         assert df[" __Number of values"].to_list() == [2, 1]
 
     def test_column_layout_common_then_extra(self):
@@ -612,6 +603,11 @@ class TestMakePreprocessing:
         df, metadata = make_preprocessing(lf, config)
         assert "t" not in metadata
         assert df[" __Target average"].to_list() == [0.5]
+
+    def test_boolean_date_dtype_exits(self):
+        lf = pl.LazyFrame({"d": [True, False]})
+        with pytest.raises(SystemExit):
+            make_preprocessing(lf, {"date_column": "d"})
 
     def test_unsupported_date_dtype_exits(self):
         lf = pl.LazyFrame({"d": [1, 2], "value": [1, 2]})

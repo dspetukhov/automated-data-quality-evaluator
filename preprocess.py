@@ -55,7 +55,8 @@ def make_preprocessing(
     Raises:
         SystemExit: Via the `exception_handler` decorator, which logs any
             exception raised while preprocessing (e.g. a malformed
-            filter/transformation expression or an invalid `"time_interval"`).
+            filter/transformation expression, an invalid `"time_interval"`,
+            or `date_column` absent from `schema`).
     """
     # Apply filter for rows and columns
     lf = apply_filter(lf, config.get("filter"))
@@ -67,13 +68,20 @@ def make_preprocessing(
     schema_str = "\n".join(f"{col}: {dtype}" for col, dtype in schema.items())
     logging.info(f"Data schema:\n{schema_str}")
 
-    # Prepare date_column for data aggregation
+    # Verify date_column
     date_column = config.get("date_column", "date_column")
+    date_column_dtype = schema.get(date_column)
+    if date_column_dtype is None:
+        raise SystemExit(f"Exit: no column '{date_column}' in data for preprocessing")
+    if date_column_dtype not in (pl.String, pl.Datetime, pl.Date):
+        raise SystemExit(
+            f"Exit: 'date_column' type '{date_column_dtype}' is not supported"
+        )
     lf, schema = process_date_column(
-        lf, schema, date_column, config.get("time_interval", "1d")
+        lf, date_column, date_column_dtype, config.get("time_interval", "1d")
     )
 
-    # Get target_column
+    # Verify target_column
     target_column = config.get("target_column", "target_column")
     target_column_dtype = schema.get(target_column)
     if target_column_dtype is None:
@@ -99,7 +107,7 @@ def make_preprocessing(
     if isinstance(chunk_size, int) and not isinstance(chunk_size, bool):
         pl.Config.set_streaming_chunk_size(chunk_size)
 
-    # Aggregate data by time intervals
+    # Aggregate data by time interval
     lf_all = [lf.group_by(TIME_INTERVAL_COL).agg(aggs)]
     if aggs_extra:
         lf_all.append(
@@ -122,7 +130,7 @@ def make_preprocessing(
 
 
 def apply_filter(lf: pl.LazyFrame, filter_str: str | None) -> pl.LazyFrame:
-    """Apply a SQL filter expression to a Polars LazyFrame.
+    """Apply a SQL-expression to filter a Polars LazyFrame.
 
     If `filter_str` is not a string (e.g. `None`, absent from config),
     LazyFrame is returned unchanged.
@@ -172,13 +180,15 @@ def apply_transformations(
 
 
 def process_date_column(
-    lf: pl.LazyFrame, schema: pl.Schema, date_column: str, time_interval: str
+    lf: pl.LazyFrame,
+    date_column: str,
+    date_column_dtype: pl.DataType,
+    time_interval: str,
 ) -> tuple[pl.LazyFrame, pl.Schema]:
-    """Validate `date_column`, divide it into time intervals, and rename it.
+    """Process `date_column` to divide it into time intervals.
 
-    Checks that `date_column` is present in `schema` and is of a supported type
-    (`String`, `Datetime`, or `Date`), converts it to a `Date` if it is a `String`
-    (strictly, so values must be in a format parsed by `str.to_date`),
+    Converts `date_column` to a `Datetime` if it is a `String`
+    (strictly, so values must be in a format parsed by `str.to_datetime`),
     divides it into time intervals via `pl.Expr.dt.truncate()`, then renames
     it to `TIME_INTERVAL_COL` for consistency within the tool. Operations are
     lazy, so an invalid `time_interval` or unparsable date strings fail only
@@ -186,41 +196,29 @@ def process_date_column(
 
     Args:
         lf (pl.LazyFrame): Input data.
-        schema (pl.Schema): Schema of input data.
-        date_column (str): Name of the date/datetime column to process.
-        time_interval (str): Polars truncate string to divide the date/datetime
-            column, e.g. `"1d"` for one day or `"1h"` for one hour.
+        date_column (str): Name of the column to process.
+        date_column_dtype (pl.DataType): Polars type of the column.
+        time_interval (str): Polars truncate string to divide the column,
+            e.g. `"1d"` for one day or `"1h"` for one hour.
 
     Returns:
         tuple[pl.LazyFrame, pl.Schema]:
             - LazyFrame with `date_column` divided into time intervals and
                 renamed to `TIME_INTERVAL_COL`.
             - Schema of the returned LazyFrame.
-
-    Raises:
-        SystemExit: If `date_column` is absent from `schema`,
-            or its dtype is not one of `String`, `Datetime`, or `Date`.
     """
-    date_dtype = schema.get(date_column)
+    if date_column_dtype == pl.String:
+        # Convert date_column of string type into datetime type
+        lf = lf.with_columns(pl.col(date_column).str.to_datetime(strict=True))
 
-    if date_dtype is None:
-        raise SystemExit(f"Exit: no column '{date_column}' in data for preprocessing")
+    # Divide date or datetime range into time intervals
+    lf = lf.with_columns(pl.col(date_column).dt.truncate(time_interval))
 
-    if date_dtype in (pl.String, pl.Datetime, pl.Date):
-        if date_dtype == pl.String:
-            # Convert date_column of string type into Polars date type
-            lf = lf.with_columns(pl.col(date_column).str.to_date(strict=True))
+    # Rename date_column as TIME_INTERVAL_COL for consistency
+    lf = lf.rename({date_column: TIME_INTERVAL_COL})
+    logging.info(f"Date column: {date_column}")
 
-        # Divide date or datetime range into time intervals
-        lf = lf.with_columns(pl.col(date_column).dt.truncate(time_interval))
-
-        # Rename date_column as TIME_INTERVAL_COL for consistency
-        lf = lf.rename({date_column: TIME_INTERVAL_COL})
-        logging.info(f"Date column: {date_column}")
-
-        return lf, lf.collect_schema()
-    else:
-        raise SystemExit(f"Exit: 'date_column' type '{date_dtype}' is not supported")
+    return lf, lf.collect_schema()
 
 
 def collect_aggregations(
@@ -233,9 +231,9 @@ def collect_aggregations(
 
     Always includes an expression for the row count per interval, and, if
     `target_column` is set, its mean. For every remaining column (excluding
-    `TIME_INTERVAL_COL` and `columns_to_exclude`), adds `"Number of unique
-    values"` (`approx_n_unique()` of non-null values, computed via `drop_nulls()`
-    so nulls are not counted as a distinct value) and `"Proportion of missing values"`
+    `TIME_INTERVAL_COL` and `columns_to_exclude`), adds "Number of unique values"
+    (`approx_n_unique()` of non-null values, computed via `drop_nulls()`
+    so nulls are not counted as a distinct value) and "Proportion of missing values"
     (mean of `is_null()`). Unless the column is in `columns_to_exclude_extra_statistics`,
     also adds `min`/`max`/`mean`/`median`/`std`; for `String` and `Categorical`
     columns these are computed on the number of characters of each value
@@ -253,10 +251,10 @@ def collect_aggregations(
 
     Returns:
         tuple[list[pl.Expr], list[pl.Expr], list[pl.Expr], dict[str, str | None]]:
-            - aggs: Aggregation expressions with the row count, target average,
+            - aggs: List of expressions with the row count, target average,
                 and common statistics.
-            - aggs_extra: Aggregation expressions with extra statistics.
-            - with_columns: Expressions replacing `String` and `Categorical`
+            - aggs_extra: List of expressions with extra statistics.
+            - with_columns: List of expressions replacing `String` and `Categorical`
                 columns with their character lengths, to be applied before `aggs_extra`.
             - metadata: Maps each processed column to its dtype as a string,
                 or `None` if the column is in `columns_to_exclude_extra_statistics`.
