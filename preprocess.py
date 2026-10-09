@@ -127,8 +127,10 @@ def make_preprocessing(
         df = df_agg.join(
             df_agg_extra, on=TIME_INTERVAL_COL, how="inner", nulls_equal=True
         )
-
-    return df.sort(TIME_INTERVAL_COL), metadata
+    # Treat bool columns as numeric
+    return df.with_columns(cs.boolean().cast(pl.UInt8)).sort(
+        TIME_INTERVAL_COL
+    ), metadata
 
 
 def apply_filter(lf: pl.LazyFrame, filter_str: str | None) -> pl.LazyFrame:
